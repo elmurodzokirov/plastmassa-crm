@@ -977,7 +977,7 @@ async function seed() {
       grossProfit: totalAmount,
       status: o.status,
       paymentType: o.paymentType,
-      createdBy: userMap['manager1'],
+      createdBy: userMap['sales1'],
     });
     orderMap[o.orderNumber] = order._id as mongoose.Types.ObjectId;
     console.log(`  ✓ ${o.orderNumber} — ${o.customer} (${totalAmount.toLocaleString()} UZS, ${o.status})`);
@@ -1048,7 +1048,7 @@ async function seed() {
   // ═══════════════════════════════════════════════════════════════════════
   console.log('\n── Attendance ──');
 
-  const workers = ['admin', 'manager1', 'operator1', 'operator2', 'warehouse1', 'accountant1'];
+  const workers = ['admin', 'sales1', 'operator1', 'operator2', 'warehouse1', 'cashier1', 'production1', 'accountant1'];
   const statuses = ['PRESENT', 'PRESENT', 'PRESENT', 'PRESENT', 'LATE', 'PRESENT'];
   const hours = [8, 9, 10, 10, 8, 8];
 
