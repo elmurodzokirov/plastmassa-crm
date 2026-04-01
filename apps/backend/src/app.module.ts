@@ -32,9 +32,18 @@ import { AuditLogMiddleware } from './common/middleware/audit-log.middleware';
     ConfigModule.forRoot({ isGlobal: true }),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        uri: configService.get<string>('MONGODB_URI'),
-      }),
+      useFactory: (configService: ConfigService) => {
+        const uri = configService.get<string>('MONGODB_URI');
+        console.log(`[MongoDB] Connecting to: ${uri ? uri.replace(/\/\/.*@/, '//<credentials>@') : 'NOT SET'}`);
+        return {
+          uri,
+          connectionFactory: (connection: unknown) => {
+            const conn = connection as { readyState: number; host: string; port: number; name: string };
+            console.log(`[MongoDB] Connected! host=${conn.host}:${conn.port} db=${conn.name} state=${conn.readyState}`);
+            return connection;
+          },
+        };
+      },
       inject: [ConfigService],
     }),
     TelegramModule,
