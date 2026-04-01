@@ -1,0 +1,26 @@
+{
+  "name": "plastmassa-crm",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w backend",
+    "dev:web": "npm run dev -w frontend",
+    "dev": "npm run dev:api & npm run dev:web",
+    "build:shared": "npm run build -w @plastmassa/shared",
+    "build:api": "npm run build -w backend",
+    "build:web": "npm run build -w frontend",
+    "build": "npm run build:shared && npm run build:api && npm run build:web",
+    "seed": "npm run seed -w backend",
+    "migrate:fifo": "cd apps/backend && npx ts-node src/seeds/migrate-to-fifo.ts",
+    "start:prod": "pm2 start ecosystem.config.js",
+    "stop:prod": "pm2 stop ecosystem.config.js",
+    "restart:prod": "pm2 restart ecosystem.config.js",
+    "logs": "pm2 logs plastmassa-api"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

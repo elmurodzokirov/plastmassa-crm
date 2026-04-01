@@ -1,0 +1,87 @@
+import { lazy, Suspense } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { AppLayout } from '@/components/layout/app-layout';
+import { ProtectedRoute } from './protected-route';
+import { PermissionRoute } from './permission-route';
+import { LoadingSpinner } from '@/components/shared/loading-spinner';
+
+const LoginPage = lazy(() => import('@/pages/login'));
+const DashboardPage = lazy(() => import('@/pages/dashboard'));
+const CustomersPage = lazy(() => import('@/pages/customers/index'));
+const CustomerDetailPage = lazy(() => import('@/pages/customers/[id]'));
+const ProductsPage = lazy(() => import('@/pages/products/index'));
+const ProductDetailPage = lazy(() => import('@/pages/products/[id]'));
+const ProductLotsPage = lazy(() => import('@/pages/products/lots'));
+const StockMovementsPage = lazy(() => import('@/pages/stock/movements'));
+const OrdersPage = lazy(() => import('@/pages/orders/index'));
+const NewOrderPage = lazy(() => import('@/pages/orders/new'));
+const OrderDetailPage = lazy(() => import('@/pages/orders/[id]'));
+const EditOrderPage = lazy(() => import('@/pages/orders/edit'));
+const OrderCheckPage = lazy(() => import('@/pages/orders/check'));
+const ProductionPage = lazy(() => import('@/pages/production/index'));
+const AttendancePage = lazy(() => import('@/pages/attendance/index'));
+const PayrollPage = lazy(() => import('@/pages/payroll/index'));
+const PayrollSlipPage = lazy(() => import('@/pages/payroll/PayrollSlipPage'));
+const FinancePage = lazy(() => import('@/pages/finance/FinancePage'));
+const ReportsPage = lazy(() => import('@/pages/reports/ReportsPage'));
+const SettingsPage = lazy(() => import('@/pages/settings/SettingsPage'));
+const RolesPage = lazy(() => import('@/pages/roles/index'));
+const UsersPage = lazy(() => import('@/pages/users/index'));
+
+export function AppRoutes() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen">
+          <LoadingSpinner size="sm" />
+        </div>
+      }
+    >
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          {/* Dashboard — hammaga ochiq */}
+          <Route index element={<DashboardPage />} />
+
+          {/* Sotuv */}
+          <Route path="customers" element={<PermissionRoute permission="customers:read"><CustomersPage /></PermissionRoute>} />
+          <Route path="customers/:id" element={<PermissionRoute permission="customers:read"><CustomerDetailPage /></PermissionRoute>} />
+          <Route path="orders" element={<PermissionRoute permission="orders:read"><OrdersPage /></PermissionRoute>} />
+          <Route path="orders/new" element={<PermissionRoute permission="orders:create"><NewOrderPage /></PermissionRoute>} />
+          <Route path="orders/:id" element={<PermissionRoute permission="orders:read"><OrderDetailPage /></PermissionRoute>} />
+          <Route path="orders/:id/edit" element={<PermissionRoute permission="orders:update"><EditOrderPage /></PermissionRoute>} />
+          <Route path="orders/:id/check" element={<PermissionRoute permission="orders:read"><OrderCheckPage /></PermissionRoute>} />
+
+          {/* Ombor */}
+          <Route path="products" element={<PermissionRoute permission="products:read"><ProductsPage /></PermissionRoute>} />
+          <Route path="products/lots" element={<PermissionRoute permission="products:read"><ProductLotsPage /></PermissionRoute>} />
+          <Route path="products/:id" element={<PermissionRoute permission="products:read"><ProductDetailPage /></PermissionRoute>} />
+          <Route path="stock/movements" element={<PermissionRoute permission="stock:read"><StockMovementsPage /></PermissionRoute>} />
+          <Route path="production" element={<PermissionRoute permission="production:read"><ProductionPage /></PermissionRoute>} />
+
+          {/* Kadrlar */}
+          <Route path="attendance" element={<PermissionRoute permission="attendance:read"><AttendancePage /></PermissionRoute>} />
+          <Route path="payroll" element={<PermissionRoute permission="payroll:read"><PayrollPage /></PermissionRoute>} />
+          <Route path="payroll/:id/slip" element={<PermissionRoute permission="payroll:read"><PayrollSlipPage /></PermissionRoute>} />
+          <Route path="users" element={<PermissionRoute permission="users:read"><UsersPage /></PermissionRoute>} />
+
+          {/* Moliya */}
+          <Route path="finance" element={<PermissionRoute permission="finance:read"><FinancePage /></PermissionRoute>} />
+          <Route path="reports" element={<PermissionRoute permission="reports:read"><ReportsPage /></PermissionRoute>} />
+
+          {/* Tizim */}
+          <Route path="roles" element={<PermissionRoute permission="users:create"><RolesPage /></PermissionRoute>} />
+          <Route path="settings" element={<PermissionRoute permission="settings:read"><SettingsPage /></PermissionRoute>} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
+  );
+}

@@ -1,0 +1,93 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 17% 96%;
+    --foreground: 220 18% 16%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 18% 16%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 18% 16%;
+    --primary: 220 23% 32%;
+    --primary-foreground: 210 20% 98%;
+    --secondary: 220 16% 94%;
+    --secondary-foreground: 220 18% 16%;
+    --muted: 220 16% 94%;
+    --muted-foreground: 220 9% 40%;
+    --accent: 220 16% 92%;
+    --accent-foreground: 220 18% 16%;
+    --destructive: 3 72% 53%;
+    --destructive-foreground: 210 25% 98%;
+    --border: 220 12% 86%;
+    --input: 220 12% 86%;
+    --ring: 220 23% 32%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 220 17% 16%;
+    --foreground: 210 20% 93%;
+    --card: 220 16% 20%;
+    --card-foreground: 210 20% 93%;
+    --popover: 220 16% 20%;
+    --popover-foreground: 210 20% 93%;
+    --primary: 210 24% 82%;
+    --primary-foreground: 220 20% 15%;
+    --secondary: 220 14% 24%;
+    --secondary-foreground: 210 20% 93%;
+    --muted: 220 14% 24%;
+    --muted-foreground: 215 12% 72%;
+    --accent: 220 14% 27%;
+    --accent-foreground: 210 20% 93%;
+    --destructive: 2 54% 34%;
+    --destructive-foreground: 210 20% 93%;
+    --border: 220 11% 30%;
+    --input: 220 11% 30%;
+    --ring: 210 24% 82%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.03em;
+  }
+
+  code, kbd, pre {
+    font-family: "IBM Plex Mono", monospace;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.14);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
