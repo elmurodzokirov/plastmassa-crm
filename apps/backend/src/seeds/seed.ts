@@ -488,13 +488,18 @@ async function seed() {
   await mongoose.connect(mongoUri);
   console.log('Connected to MongoDB\n');
 
+  const db = mongoose.connection.db;
+  if (!db) {
+    throw new Error('MongoDB connection.db is undefined');
+  }
+
   // ═══════════════════════════════════════════════════════════════════════
   // DROP ALL DATA
   // ═══════════════════════════════════════════════════════════════════════
   console.log('══ DROPPING ALL DATA ══');
-  const collections = await mongoose.connection.db!.listCollections().toArray();
+  const collections = await db.listCollections().toArray();
   for (const col of collections) {
-    await mongoose.connection.db!.dropCollection(col.name);
+    await db.dropCollection(col.name);
     console.log(`  ✗ Dropped collection: ${col.name}`);
   }
   console.log('  All collections dropped.\n');
