@@ -485,18 +485,14 @@ async function seed() {
     process.env.MONGODB_URI || 'mongodb://localhost:27017/plastmassa_crm';
 
   console.log(`Connecting to MongoDB: ${mongoUri}`);
-  await mongoose.connect(mongoUri);
+  const conn = await mongoose.connect(mongoUri);
   console.log('Connected to MongoDB\n');
-
-  const db = mongoose.connection.db;
-  if (!db) {
-    throw new Error('MongoDB connection.db is undefined');
-  }
 
   // ═══════════════════════════════════════════════════════════════════════
   // DROP ALL DATA
   // ═══════════════════════════════════════════════════════════════════════
   console.log('══ DROPPING ALL DATA ══');
+  const db = conn.connection.getClient().db();
   const collections = await db.listCollections().toArray();
   for (const col of collections) {
     await db.dropCollection(col.name);
