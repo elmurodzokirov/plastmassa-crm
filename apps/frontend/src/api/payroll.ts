@@ -1,5 +1,5 @@
 import client from './client';
-import type { PaginatedResponse } from '@plastmassa/shared';
+import type { BulkCalculatePayrollResult, PaginatedResponse, PayrollAttendanceLiveSummary } from '@plastmassa/shared';
 
 export interface AdvanceData {
   _id: string;
@@ -19,6 +19,7 @@ export interface PayrollData {
   year: number;
   month: number;
   baseSalary: number;
+  salaryType: 'FIXED' | 'PIECE_RATE';
   workingDays: number;
   presentDays: number;
   absentDays: number;
@@ -29,11 +30,18 @@ export interface PayrollData {
   deductions: number;
   advancesTotal: number;
   bonus: number;
+  productionEarnings: number;
+  previousBalance: number;
+  totalEarned: number;
+  paidAmount: number;
+  remainingBalance: number;
   netSalary: number;
   status: string;
   notes?: string;
   calculatedBy: any;
+  liveAttendanceSummary?: PayrollAttendanceLiveSummary;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface AdvanceQuery {
@@ -58,6 +66,20 @@ export interface PayrollQuery {
   sortOrder?: 'asc' | 'desc';
 }
 
+export interface BulkCalculatePayrollItem {
+  user: string;
+  baseSalary: number;
+  bonus?: number;
+  deductions?: number;
+  notes?: string;
+}
+
+export interface BulkCalculatePayrollData {
+  year: number;
+  month: number;
+  items: BulkCalculatePayrollItem[];
+}
+
 export const payrollApi = {
   // Advances
   getAdvances: (params?: AdvanceQuery) =>
@@ -78,8 +100,8 @@ export const payrollApi = {
     client.get<PayrollData>(`/payroll/${id}`).then((r) => r.data),
   calculatePayroll: (data: any) =>
     client.post<PayrollData>('/payroll/calculate', data).then((r) => r.data),
-  bulkCalculate: (data: any) =>
-    client.post('/payroll/calculate/bulk', data).then((r) => r.data),
+  bulkCalculate: (data: BulkCalculatePayrollData) =>
+    client.post<BulkCalculatePayrollResult>('/payroll/calculate/bulk', data).then((r) => r.data),
   updatePayrollStatus: (id: string, status: string) =>
     client.patch(`/payroll/${id}/status`, { status }).then((r) => r.data),
   getPayrollByMonth: (year: number, month: number) =>

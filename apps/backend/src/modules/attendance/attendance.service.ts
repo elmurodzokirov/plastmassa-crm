@@ -109,7 +109,7 @@ export class AttendanceService {
     const filter: any = {};
 
     if (user) {
-      filter.user = user;
+      filter.user = new Types.ObjectId(user);
     }
 
     if (status) {
@@ -193,7 +193,7 @@ export class AttendanceService {
 
     const records = await this.attendanceModel
       .find({
-        user: userId,
+        user: new Types.ObjectId(userId),
         date: { $gte: startDate, $lte: endDate },
       })
       .populate('user', 'fullName username phone role')

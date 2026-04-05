@@ -283,6 +283,17 @@ export interface MonthlyAttendanceReport {
   };
 }
 
+export interface PayrollAttendanceLiveSummary {
+  totalDays: number;
+  presentDays: number;
+  absentDays: number;
+  lateDays: number;
+  halfDays: number;
+  leaveDays: number;
+  totalHoursWorked: number;
+  totalOvertimeHours: number;
+}
+
 // Advance (Sprint 7)
 export type AdvanceStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
@@ -328,8 +339,20 @@ export interface Payroll {
   status: PayrollStatus;
   notes?: string;
   calculatedBy: string | User;
+  liveAttendanceSummary?: PayrollAttendanceLiveSummary;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface BulkCalculatePayrollSkippedItem {
+  user: string;
+  fullName?: string;
+  reason: string;
+}
+
+export interface BulkCalculatePayrollResult {
+  processed: Payroll[];
+  skipped: BulkCalculatePayrollSkippedItem[];
 }
 
 // Expense (Sprint 8)

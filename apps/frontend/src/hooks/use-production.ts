@@ -11,6 +11,14 @@ export function useProductionLogs(params?: ProductionLogQuery) {
   });
 }
 
+export function useProductionLogsEnabled(params: ProductionLogQuery | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['production-logs', params],
+    queryFn: () => productionApi.getLogs(params),
+    enabled,
+  });
+}
+
 export function useProductionLog(id: string) {
   return useQuery({
     queryKey: ['production-logs', id],

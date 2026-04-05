@@ -13,6 +13,7 @@ export interface ProductionLogData {
   totalMaterialCost: number;
   costPerUnitProduced: number;
   earnedAmount: number;
+  pieceRateAmount: number;
   notes?: string;
   worker: any;
   status: 'PENDING' | 'APPROVED';

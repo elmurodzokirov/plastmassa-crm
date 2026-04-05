@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
+import type { BulkCalculatePayrollSkippedItem } from '@plastmassa/shared';
 import {
   ChevronLeft,
   ChevronRight,
@@ -19,8 +20,7 @@ import {
   Filter,
   Save,
   Loader2,
-  TrendingUp,
-  Minus,
+  AlertTriangle,
   ArrowRightLeft,
 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
@@ -73,6 +73,7 @@ const MONTH_NAMES = [
   'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
   'Iyul', 'Avgust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr',
 ];
+const DEFAULT_WORKING_DAYS = 26;
 
 const advanceSchema = z.object({
   user: z.string().min(1, 'Xodimni tanlang'),
@@ -91,12 +92,41 @@ interface PayrollRow {
   baseSalary: number;
   bonus: number;
   deductions: number;
+  initialBaseSalary: number;
+  initialBonus: number;
+  initialDeductions: number;
   // Computed/existing values (from server)
   existingPayroll: any | null;
 }
 
+interface PayrollPreview {
+  attendanceEarnings: number;
+  overtimeAmount: number;
+  productionEarnings: number;
+  totalEarned: number;
+  payout: number;
+  remainingBalance: number;
+  previousBalance: number;
+  advances: number;
+  warnings: string[];
+  hasChanges: boolean;
+}
+
+const roundAmount = (value: number) => Math.round(Number.isFinite(value) ? value : 0);
+
 // Expandable table row
-function PayrollEditRow({ row, index, isPieceRate, workerProd, workerAtt, workerAdvance, workerPrevBalance, updateRow, formatCurrency: fmt }: any) {
+function PayrollEditRow({
+  row,
+  index,
+  isPieceRate,
+  workerProd,
+  workerAtt,
+  workerAdvance,
+  workerPrevBalance,
+  preview,
+  updateRow,
+  formatCurrency: fmt,
+}: any) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -106,6 +136,7 @@ function PayrollEditRow({ row, index, isPieceRate, workerProd, workerAtt, worker
         className={cn(
           'border-b border-border/20 hover:bg-muted/10 cursor-pointer',
           open && 'bg-muted/10',
+          preview.warnings.length > 0 && 'bg-amber-500/5',
         )}
         onClick={() => setOpen(!open)}
       >
@@ -144,7 +175,7 @@ function PayrollEditRow({ row, index, isPieceRate, workerProd, workerAtt, worker
         <TableCell className="text-right text-xs">
           {workerAdvance > 0 ? <span className="text-red-400">{fmt(workerAdvance)}</span> : '—'}
         </TableCell>
-        {/* Qoldiq */}
+        {/* Oldingi qoldiq */}
         <TableCell className="text-right text-xs">
           {workerPrevBalance > 0 ? <span className="text-amber-400">{fmt(workerPrevBalance)}</span> : '—'}
         </TableCell>
@@ -168,13 +199,42 @@ function PayrollEditRow({ row, index, isPieceRate, workerProd, workerAtt, worker
             className="h-7 w-[80px] rounded-lg text-xs"
           />
         </TableCell>
+        {/* Hisoblangan */}
+        <TableCell className="text-right text-xs font-medium text-foreground">
+          {fmt(preview.totalEarned)}
+        </TableCell>
+        {/* To'lanadigan */}
+        <TableCell className="text-right text-xs font-semibold">
+          <span className={cn(preview.payout < 0 ? 'text-red-400' : 'text-emerald-400')}>
+            {fmt(preview.payout)}
+          </span>
+        </TableCell>
+        {/* Holat */}
+        <TableCell className="text-right">
+          <div className="flex flex-wrap justify-end gap-1">
+            {preview.hasChanges && (
+              <Badge variant="info" className="text-[10px] px-1.5 py-0">
+                O'zgardi
+              </Badge>
+            )}
+            {preview.warnings.length > 0 ? (
+              <Badge variant="warning" className="text-[10px] px-1.5 py-0">
+                {preview.warnings.length} ogoh.
+              </Badge>
+            ) : (
+              <Badge variant="success" className="text-[10px] px-1.5 py-0">
+                Tayyor
+              </Badge>
+            )}
+          </div>
+        </TableCell>
       </TableRow>
 
       {/* Expanded detail row */}
       {open && (
         <TableRow className="bg-muted/5 hover:bg-muted/5">
-          <TableCell colSpan={8} className="p-0">
-            <div className="px-6 py-3 ml-6 border-l-2 border-indigo-500/30">
+          <TableCell colSpan={11} className="p-0">
+            <div className="px-6 py-4 ml-6 border-l-2 border-indigo-500/30 space-y-3">
               {/* Oylikchi — davomat */}
               {!isPieceRate && workerAtt && (
                 <div className="flex items-center gap-4 text-xs">
@@ -226,6 +286,57 @@ function PayrollEditRow({ row, index, isPieceRate, workerProd, workerAtt, worker
               {isPieceRate && (!workerProd || workerProd.products.length === 0) && (
                 <p className="text-xs text-muted-foreground italic">Ishlab chiqarish yozuvi yo'q</p>
               )}
+
+              <div className="flex flex-wrap gap-2">
+                {!isPieceRate && (
+                  <div className="rounded-lg border border-border/30 bg-background/60 px-2.5 py-1 text-[11px] text-muted-foreground">
+                    Davomat bo'yicha: <span className="font-medium text-foreground">{fmt(preview.attendanceEarnings)}</span>
+                  </div>
+                )}
+                {isPieceRate && (
+                  <div className="rounded-lg border border-border/30 bg-background/60 px-2.5 py-1 text-[11px] text-muted-foreground">
+                    Ishbay: <span className="font-medium text-foreground">{fmt(preview.productionEarnings)}</span>
+                  </div>
+                )}
+                {preview.overtimeAmount > 0 && (
+                  <div className="rounded-lg border border-border/30 bg-background/60 px-2.5 py-1 text-[11px] text-muted-foreground">
+                    Overtime: <span className="font-medium text-foreground">+{fmt(preview.overtimeAmount)}</span>
+                  </div>
+                )}
+                {row.bonus > 0 && (
+                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] text-emerald-400">
+                    Bonus: +{fmt(row.bonus)}
+                  </div>
+                )}
+                {workerPrevBalance > 0 && (
+                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-400">
+                    Oldingi qoldiq: +{fmt(workerPrevBalance)}
+                  </div>
+                )}
+                {workerAdvance > 0 && (
+                  <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-[11px] text-red-400">
+                    Avans: -{fmt(workerAdvance)}
+                  </div>
+                )}
+                {row.deductions > 0 && (
+                  <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-[11px] text-red-400">
+                    Ushlanma: -{fmt(row.deductions)}
+                  </div>
+                )}
+                <div className="rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] text-primary">
+                  To'lanadigan: <span className="font-semibold">{fmt(preview.payout)}</span>
+                </div>
+              </div>
+
+              {preview.warnings.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {preview.warnings.map((warning: string) => (
+                    <Badge key={warning} variant="warning" className="text-[10px]">
+                      {warning}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
           </TableCell>
         </TableRow>
@@ -240,10 +351,12 @@ export default function PayrollPage() {
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [advanceDialogOpen, setAdvanceDialogOpen] = useState(false);
+  const [calculateDialogOpen, setCalculateDialogOpen] = useState(false);
 
   // Inline editing state
   const [editMode, setEditMode] = useState(false);
   const [rows, setRows] = useState<PayrollRow[]>([]);
+  const [reviewFilter, setReviewFilter] = useState<string>('ALL');
 
   // Advance filters
   const [advUserFilter, setAdvUserFilter] = useState<string>('ALL');
@@ -257,7 +370,12 @@ export default function PayrollPage() {
   const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
   const prodDateFrom = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
   const prodDateTo = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
-  const { data: prodLogsData } = useProductionLogs({ dateFrom: prodDateFrom, dateTo: prodDateTo, limit: 99999 });
+  const { data: prodLogsData } = useProductionLogs({
+    dateFrom: prodDateFrom,
+    dateTo: prodDateTo,
+    status: 'APPROVED',
+    limit: 99999,
+  });
 
   // Attendance for selected month (oylikchilar uchun)
   const { data: attendanceData } = useAttendance({ dateFrom: prodDateFrom, dateTo: prodDateTo, limit: 99999 });
@@ -322,12 +440,34 @@ export default function PayrollPage() {
   // Attendance summary per worker
   const attendanceSummary = useMemo(() => {
     const allRecords = attendanceData?.items || [];
-    const map: Record<string, { present: number; absent: number; late: number; halfDay: number; leave: number; total: number }> = {};
+    const map: Record<string, {
+      present: number;
+      absent: number;
+      late: number;
+      halfDay: number;
+      leave: number;
+      total: number;
+      totalHoursWorked: number;
+      totalOvertimeHours: number;
+    }> = {};
     for (const rec of allRecords as any[]) {
       const userId = typeof rec.user === 'string' ? rec.user : rec.user?._id;
       if (!userId) continue;
-      if (!map[userId]) map[userId] = { present: 0, absent: 0, late: 0, halfDay: 0, leave: 0, total: 0 };
+      if (!map[userId]) {
+        map[userId] = {
+          present: 0,
+          absent: 0,
+          late: 0,
+          halfDay: 0,
+          leave: 0,
+          total: 0,
+          totalHoursWorked: 0,
+          totalOvertimeHours: 0,
+        };
+      }
       map[userId].total++;
+      map[userId].totalHoursWorked += rec.hoursWorked || 0;
+      map[userId].totalOvertimeHours += rec.overtimeHours || 0;
       if (rec.status === 'PRESENT') map[userId].present++;
       else if (rec.status === 'ABSENT') map[userId].absent++;
       else if (rec.status === 'LATE') map[userId].late++;
@@ -360,6 +500,127 @@ export default function PayrollPage() {
     return map;
   }, [prevPayrollData]);
 
+  const previewMap = useMemo(() => {
+    const map: Record<string, PayrollPreview> = {};
+
+    for (const row of rows) {
+      const workerAtt = attendanceSummary[row.userId];
+      const workerProd = prodSummary[row.userId];
+      const advances = advanceSummary[row.userId] || 0;
+      const previousBalance = prevBalanceMap[row.userId] || 0;
+      const isPieceRate = row.salaryType === 'PIECE_RATE';
+
+      let attendanceEarnings = 0;
+      let overtimeAmount = 0;
+      let productionEarnings = 0;
+
+      if (isPieceRate) {
+        productionEarnings = roundAmount(workerProd?.total || 0);
+      } else {
+        const dailyRate = row.baseSalary > 0 ? row.baseSalary / DEFAULT_WORKING_DAYS : 0;
+        const presentDays = workerAtt?.present || 0;
+        const lateDays = workerAtt?.late || 0;
+        const halfDays = workerAtt?.halfDay || 0;
+        const overtimeHours = workerAtt?.totalOvertimeHours || 0;
+
+        attendanceEarnings = roundAmount(
+          dailyRate * presentDays +
+          dailyRate * 0.5 * lateDays +
+          dailyRate * 0.5 * halfDays,
+        );
+
+        const overtimeRate = (dailyRate / 8) * 1.5;
+        overtimeAmount = roundAmount(overtimeHours * overtimeRate);
+      }
+
+      const totalEarned = roundAmount(
+        (isPieceRate ? productionEarnings : attendanceEarnings + overtimeAmount) + row.bonus,
+      );
+      const payout = roundAmount(totalEarned + previousBalance - row.deductions - advances);
+      const remainingBalance = roundAmount(
+        totalEarned + previousBalance - row.deductions - advances - payout,
+      );
+
+      const warnings: string[] = [];
+      if (!isPieceRate && !workerAtt?.total) warnings.push("Davomat yo'q");
+      if (!isPieceRate && row.baseSalary <= 0) warnings.push("Oylik kiritilmagan");
+      if (isPieceRate && !workerProd?.products?.length) warnings.push("Ishlab chiqarish yo'q");
+      if (payout < 0) warnings.push('Natija manfiy');
+
+      map[row.userId] = {
+        attendanceEarnings,
+        overtimeAmount,
+        productionEarnings,
+        totalEarned,
+        payout,
+        remainingBalance,
+        previousBalance,
+        advances,
+        warnings,
+        hasChanges: (
+          row.baseSalary !== row.initialBaseSalary ||
+          row.bonus !== row.initialBonus ||
+          row.deductions !== row.initialDeductions
+        ),
+      };
+    }
+
+    return map;
+  }, [rows, attendanceSummary, prodSummary, advanceSummary, prevBalanceMap]);
+
+  const filteredRows = useMemo(() => {
+    return rows.filter((row) => {
+      const preview = previewMap[row.userId];
+      if (!preview) return reviewFilter === 'ALL';
+
+      if (reviewFilter === 'ISSUES') return preview.warnings.length > 0;
+      if (reviewFilter === 'CHANGED') return preview.hasChanges;
+      if (reviewFilter === 'FIXED') return row.salaryType !== 'PIECE_RATE';
+      if (reviewFilter === 'PIECE_RATE') return row.salaryType === 'PIECE_RATE';
+      if (reviewFilter === 'WITH_ADVANCE') return preview.advances > 0;
+      if (reviewFilter === 'WITH_PREV_BALANCE') return preview.previousBalance > 0;
+
+      return true;
+    });
+  }, [rows, reviewFilter, previewMap]);
+
+  const uncalculableRows = useMemo(() => (
+    rows.filter((row) => row.salaryType === 'FIXED' && !(attendanceSummary[row.userId]?.total > 0))
+  ), [rows, attendanceSummary]);
+
+  const calculableRows = useMemo(() => {
+    const blockedIds = new Set(uncalculableRows.map((row) => row.userId));
+    return rows.filter((row) => !blockedIds.has(row.userId));
+  }, [rows, uncalculableRows]);
+
+  const summarizeRows = (targetRows: PayrollRow[]) => (
+    targetRows.reduce((acc, row) => {
+      const preview = previewMap[row.userId];
+      if (!preview) return acc;
+      acc.count += 1;
+      acc.changed += preview.hasChanges ? 1 : 0;
+      acc.withWarnings += preview.warnings.length > 0 ? 1 : 0;
+      acc.totalEarned += preview.totalEarned;
+      acc.totalPayout += preview.payout;
+      acc.totalAdvances += preview.advances;
+      acc.totalPreviousBalance += preview.previousBalance;
+      return acc;
+    }, {
+      count: 0,
+      changed: 0,
+      withWarnings: 0,
+      totalEarned: 0,
+      totalPayout: 0,
+      totalAdvances: 0,
+      totalPreviousBalance: 0,
+    })
+  );
+
+  const allRowsSummary = useMemo(() => summarizeRows(rows), [rows, previewMap]);
+  const calculableRowsSummary = useMemo(() => summarizeRows(calculableRows), [calculableRows, previewMap]);
+  const visibleRowsSummary = useMemo(() => summarizeRows(filteredRows), [filteredRows, previewMap]);
+  const hasActiveReviewFilter = reviewFilter !== 'ALL';
+
   // Stats
   const stats = useMemo(() => {
     const total = users.length;
@@ -375,12 +636,14 @@ export default function PayrollPage() {
     if (selectedMonth === 1) { setSelectedMonth(12); setSelectedYear((y) => y - 1); }
     else setSelectedMonth((m) => m - 1);
     setEditMode(false);
+    setCalculateDialogOpen(false);
   }, [selectedMonth]);
 
   const goToNextMonth = useCallback(() => {
     if (selectedMonth === 12) { setSelectedMonth(1); setSelectedYear((y) => y + 1); }
     else setSelectedMonth((m) => m + 1);
     setEditMode(false);
+    setCalculateDialogOpen(false);
   }, [selectedMonth]);
 
   // Enter edit/calculate mode
@@ -398,10 +661,15 @@ export default function PayrollPage() {
         baseSalary: u.baseSalary || (existing ? (existing as any).baseSalary || 0 : 0),
         bonus: existing ? (existing as any).bonus || 0 : 0,
         deductions: existing ? (existing as any).deductions || 0 : 0,
+        initialBaseSalary: u.baseSalary || (existing ? (existing as any).baseSalary || 0 : 0),
+        initialBonus: existing ? (existing as any).bonus || 0 : 0,
+        initialDeductions: existing ? (existing as any).deductions || 0 : 0,
         existingPayroll: existing || null,
       };
     });
     setRows(newRows);
+    setReviewFilter('ALL');
+    setCalculateDialogOpen(false);
     setEditMode(true);
   }, [users, payrolls]);
 
@@ -414,23 +682,73 @@ export default function PayrollPage() {
   }, []);
 
   const handleCalculateAll = useCallback(async () => {
+    if (calculableRows.length === 0) {
+      toast({
+        title: 'Hisoblash uchun tayyor xodim topilmadi',
+        description: "Fixed xodimlar uchun avval davomatni saqlang.",
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
-      await bulkCalculate.mutateAsync({
+      const result = await bulkCalculate.mutateAsync({
         year: selectedYear,
         month: selectedMonth,
-        employees: rows.map((row) => ({
+        items: calculableRows.map((row) => ({
           user: row.userId,
           baseSalary: row.baseSalary,
           bonus: row.bonus,
           deductions: row.deductions,
         })),
       });
-      toast({ title: 'Barcha oyliklar hisoblandi', variant: 'success' });
-      setEditMode(false);
-    } catch {
-      toast({ title: 'Xatolik yuz berdi', variant: 'destructive' });
+
+      const skippedMap = new Map<string, BulkCalculatePayrollSkippedItem>();
+      for (const row of uncalculableRows) {
+        skippedMap.set(row.userId, {
+          user: row.userId,
+          fullName: row.fullName,
+          reason: "Davomat kiritilmagan",
+        });
+      }
+      for (const item of result.skipped || []) {
+        skippedMap.set(item.user, item);
+      }
+
+      const skippedItems = Array.from(skippedMap.values());
+      const skippedNames = skippedItems
+        .map((item) => item.fullName || item.user)
+        .filter((name): name is string => Boolean(name));
+      const processedCount = result.processed?.length || 0;
+
+      if (processedCount === 0) {
+        toast({
+          title: 'Hech bir xodim hisoblanmadi',
+          description: skippedItems[0]?.reason || "Tayyor xodim topilmadi.",
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      toast({
+        title: skippedItems.length > 0 ? 'Tayyor xodimlar hisoblandi' : 'Barcha oyliklar hisoblandi',
+        description: skippedItems.length > 0
+          ? `${processedCount} ta xodim hisoblandi. ${skippedItems.length} ta xodim o'tkazib yuborildi: ${skippedNames.slice(0, 3).join(', ')}${skippedNames.length > 3 ? '...' : ''}`
+          : undefined,
+        variant: 'success',
+      });
+      setCalculateDialogOpen(false);
+      if (skippedItems.length === 0) {
+        setEditMode(false);
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Xatolik yuz berdi',
+        description: error?.response?.data?.message || 'Payroll hisoblashda xatolik yuz berdi',
+        variant: 'destructive',
+      });
     }
-  }, [bulkCalculate, selectedYear, selectedMonth, rows]);
+  }, [bulkCalculate, selectedYear, selectedMonth, calculableRows, uncalculableRows]);
 
   // Status actions
   const handleConfirm = useCallback(async (id: string) => {
@@ -487,6 +805,14 @@ export default function PayrollPage() {
     if (status === 'PAID') return <Badge variant="success" className="text-[10px] px-1.5 py-0">To'langan</Badge>;
     return <Badge variant="outline" className="text-[10px] px-1.5 py-0">{status}</Badge>;
   };
+
+  const getWorkBasedPayrollAmount = (payroll: any) => (
+    payroll.salaryType === 'PIECE_RATE'
+      ? payroll.productionEarnings || 0
+      : Math.max((payroll.totalEarned || 0) - (payroll.overtimeAmount || 0) - (payroll.bonus || 0), 0)
+  );
+
+  const getFinalPayrollAmount = (payroll: any) => payroll.paidAmount || payroll.netSalary || 0;
 
   const isLoading = payrollLoading || usersLoading;
 
@@ -555,21 +881,105 @@ export default function PayrollPage() {
 
           {/* Actions */}
           {!isLoading && (
-            <div className="flex items-center justify-between gap-3">
+            <div className={cn('flex items-center justify-between gap-3', editMode && 'block')}>
               {!editMode ? (
                 <Button onClick={enterEditMode} className="gap-1.5 rounded-xl h-9" size="sm">
                   <Calculator className="h-3.5 w-3.5" />
                   Oylik hisoblash
                 </Button>
               ) : (
-                <div className="flex items-center gap-2">
-                  <Button onClick={handleCalculateAll} disabled={bulkCalculate.isPending} className="gap-1.5 rounded-xl h-9" size="sm">
-                    {bulkCalculate.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                    Barchasini hisoblash
-                  </Button>
-                  <Button variant="outline" size="sm" className="rounded-xl h-9" onClick={() => setEditMode(false)}>
-                    Bekor qilish
-                  </Button>
+                <div className="sticky top-4 z-20 space-y-3 rounded-2xl border border-border/50 bg-card/85 p-3 backdrop-blur-2xl">
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+                    <div className="rounded-xl border border-border/40 bg-background/70 px-3 py-2.5">
+                      <p className="text-[11px] text-muted-foreground">Ko'rinayotgan</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">
+                        {visibleRowsSummary.count} / {rows.length}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/40 bg-background/70 px-3 py-2.5">
+                      <p className="text-[11px] text-muted-foreground">O'zgargan</p>
+                      <p className="mt-1 text-sm font-semibold text-blue-400">{visibleRowsSummary.changed}</p>
+                    </div>
+                    <div className="rounded-xl border border-border/40 bg-background/70 px-3 py-2.5">
+                      <p className="text-[11px] text-muted-foreground">Ogohlantirish</p>
+                      <p className="mt-1 flex items-center gap-1 text-sm font-semibold text-amber-400">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        {visibleRowsSummary.withWarnings}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/40 bg-background/70 px-3 py-2.5">
+                      <p className="text-[11px] text-muted-foreground">Jami hisoblangan</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">
+                        {formatCurrency(visibleRowsSummary.totalEarned)}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/40 bg-background/70 px-3 py-2.5">
+                      <p className="text-[11px] text-muted-foreground">Jami to'lanadigan</p>
+                      <p className="mt-1 text-sm font-semibold text-emerald-400">
+                        {formatCurrency(visibleRowsSummary.totalPayout)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-2 rounded-xl border border-border/40 bg-background/70 px-3 py-2">
+                        <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground">Ko'rish</span>
+                        <Select value={reviewFilter} onValueChange={setReviewFilter}>
+                          <SelectTrigger className="h-8 w-[180px] rounded-lg border-0 bg-transparent px-0 shadow-none focus:ring-0">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ALL">Hammasi</SelectItem>
+                            <SelectItem value="ISSUES">Muammolilar</SelectItem>
+                            <SelectItem value="CHANGED">O'zgarganlar</SelectItem>
+                            <SelectItem value="FIXED">Faqat oylikchilar</SelectItem>
+                            <SelectItem value="PIECE_RATE">Faqat ishbaychilar</SelectItem>
+                            <SelectItem value="WITH_ADVANCE">Avansi borlar</SelectItem>
+                            <SelectItem value="WITH_PREV_BALANCE">Oldingi qoldiq borlar</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {hasActiveReviewFilter && (
+                        <Badge variant="secondary" className="text-[11px]">
+                          Filter: {filteredRows.length} ta satr
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        onClick={() => setCalculateDialogOpen(true)}
+                        disabled={bulkCalculate.isPending || rows.length === 0}
+                        className="gap-1.5 rounded-xl h-9"
+                        size="sm"
+                      >
+                        {bulkCalculate.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                        Barchasini hisoblash
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-xl h-9"
+                        onClick={() => {
+                          setCalculateDialogOpen(false);
+                          setEditMode(false);
+                        }}
+                      >
+                        Bekor qilish
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                    <span>Avans: {formatCurrency(visibleRowsSummary.totalAdvances)}</span>
+                    <span>Oldingi qoldiq: {formatCurrency(visibleRowsSummary.totalPreviousBalance)}</span>
+                    <span>Hisoblanadi: {calculableRows.length} ta</span>
+                    {uncalculableRows.length > 0 && (
+                      <span className="text-amber-400">Davomati yo'q, skip: {uncalculableRows.length} ta</span>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -594,26 +1004,38 @@ export default function PayrollPage() {
                       <TableHead className="min-w-[110px]">Davomat / Ishbay</TableHead>
                       <TableHead className="min-w-[90px] text-right">Oylik</TableHead>
                       <TableHead className="min-w-[80px] text-right">Avans</TableHead>
-                      <TableHead className="min-w-[80px] text-right">Qoldiq</TableHead>
+                      <TableHead className="min-w-[80px] text-right">Oldingi</TableHead>
                       <TableHead className="min-w-[90px]">Bonus</TableHead>
                       <TableHead className="min-w-[90px]">Ushlanma</TableHead>
+                      <TableHead className="min-w-[110px] text-right">Hisoblangan</TableHead>
+                      <TableHead className="min-w-[110px] text-right">To'lanadigan</TableHead>
+                      <TableHead className="min-w-[120px] text-right">Holat</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rows.map((row, index) => (
-                      <PayrollEditRow
-                        key={row.userId}
-                        row={row}
-                        index={index}
-                        isPieceRate={row.salaryType === 'PIECE_RATE'}
-                        workerProd={row.salaryType === 'PIECE_RATE' ? prodSummary[row.userId] : null}
-                        workerAtt={attendanceSummary[row.userId]}
-                        workerAdvance={advanceSummary[row.userId] || 0}
-                        workerPrevBalance={prevBalanceMap[row.userId] || 0}
-                        updateRow={updateRow}
-                        formatCurrency={formatCurrency}
-                      />
-                    ))}
+                    {filteredRows.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={11} className="py-12 text-center text-sm text-muted-foreground">
+                          Tanlangan filter bo'yicha satr topilmadi.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredRows.map((row) => (
+                        <PayrollEditRow
+                          key={row.userId}
+                          row={row}
+                          index={rows.findIndex((item) => item.userId === row.userId)}
+                          isPieceRate={row.salaryType === 'PIECE_RATE'}
+                          workerProd={row.salaryType === 'PIECE_RATE' ? prodSummary[row.userId] : null}
+                          workerAtt={attendanceSummary[row.userId]}
+                          workerAdvance={advanceSummary[row.userId] || 0}
+                          workerPrevBalance={prevBalanceMap[row.userId] || 0}
+                          preview={previewMap[row.userId]}
+                          updateRow={updateRow}
+                          formatCurrency={formatCurrency}
+                        />
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </div>
@@ -639,12 +1061,12 @@ export default function PayrollPage() {
                       <TableHead className="min-w-[60px] text-center">Ish haqi</TableHead>
                       <TableHead className="min-w-[80px] text-right">Asosiy</TableHead>
                       <TableHead className="min-w-[70px] text-right">Ishbay</TableHead>
-                      <TableHead className="min-w-[60px] text-center">Kun</TableHead>
+                      <TableHead className="min-w-[110px] text-center">Davomat</TableHead>
                       <TableHead className="min-w-[70px] text-right">Bonus</TableHead>
                       <TableHead className="min-w-[70px] text-right">Ushlan.</TableHead>
                       <TableHead className="min-w-[70px] text-right">Avans</TableHead>
                       <TableHead className="min-w-[80px] text-right">Oldingi</TableHead>
-                      <TableHead className="min-w-[90px] text-right font-bold">To'lan.</TableHead>
+                      <TableHead className="min-w-[140px] text-right font-bold">Oldin - yakun</TableHead>
                       <TableHead className="min-w-[80px] text-right">Qoldiq</TableHead>
                       <TableHead className="min-w-[70px] text-center">Holat</TableHead>
                       <TableHead className="w-[70px]"></TableHead>
@@ -654,6 +1076,17 @@ export default function PayrollPage() {
                     {payrolls.map((payroll: any) => {
                       const isPieceRate = payroll.salaryType === 'PIECE_RATE';
                       const remaining = payroll.remainingBalance || 0;
+                      const payrollUserId = typeof payroll.user === 'string' ? payroll.user : payroll.user?._id;
+                      const liveAttendance = payrollUserId ? attendanceSummary[payrollUserId] : undefined;
+                      const attendedDays = liveAttendance
+                        ? (liveAttendance.present || 0) + (liveAttendance.late || 0) + (liveAttendance.halfDay || 0)
+                        : (payroll.presentDays || 0) + (payroll.lateDays || 0);
+                      const absentDays = liveAttendance ? (liveAttendance.absent || 0) : (payroll.absentDays || 0);
+                      const lateDays = liveAttendance ? (liveAttendance.late || 0) : (payroll.lateDays || 0);
+                      const halfDays = liveAttendance ? (liveAttendance.halfDay || 0) : 0;
+                      const workBasedAmount = getWorkBasedPayrollAmount(payroll);
+                      const calculatedAmount = payroll.totalEarned || 0;
+                      const finalAmount = getFinalPayrollAmount(payroll);
                       return (
                         <TableRow
                           key={payroll._id}
@@ -666,6 +1099,11 @@ export default function PayrollPage() {
                           <TableCell className="sticky left-0 z-10 bg-card/95 border-r border-border/30">
                             <p className="text-xs font-medium text-foreground">{getUserName(payroll.user)}</p>
                             <p className="text-[10px] text-muted-foreground">{getRoleName(payroll.user)}</p>
+                            {!isPieceRate && (
+                              <p className="text-[10px] text-muted-foreground">
+                                Kelgan: {attendedDays}/{payroll.workingDays || 0} kun
+                              </p>
+                            )}
                           </TableCell>
                           <TableCell className="text-center">
                             <Badge variant={isPieceRate ? 'outline' : 'secondary'} className="text-[10px] px-1.5 py-0">
@@ -678,8 +1116,31 @@ export default function PayrollPage() {
                           <TableCell className="text-right text-muted-foreground">
                             {payroll.productionEarnings > 0 ? formatCurrency(payroll.productionEarnings) : '—'}
                           </TableCell>
-                          <TableCell className="text-center text-muted-foreground">
-                            {isPieceRate ? '—' : `${payroll.presentDays}/${payroll.workingDays}`}
+                          <TableCell className="text-center">
+                            {isPieceRate ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : (
+                              <div className="space-y-0.5">
+                                <p className="font-medium text-foreground">
+                                  {attendedDays}/{payroll.workingDays || 0} kun
+                                </p>
+                                {halfDays > 0 && (
+                                  <p className="text-[10px] text-blue-400">
+                                    Yarim kun: {halfDays}
+                                  </p>
+                                )}
+                                {absentDays > 0 && (
+                                  <p className="text-[10px] text-red-400">
+                                    Kelmadi: {absentDays} kun
+                                  </p>
+                                )}
+                                {lateDays > 0 && (
+                                  <p className="text-[10px] text-amber-400">
+                                    Kechikdi: {lateDays} kun
+                                  </p>
+                                )}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="text-right text-muted-foreground">
                             {payroll.bonus > 0 ? formatCurrency(payroll.bonus) : '—'}
@@ -695,8 +1156,25 @@ export default function PayrollPage() {
                               <span className="text-amber-400">{formatCurrency(payroll.previousBalance)}</span>
                             ) : '—'}
                           </TableCell>
-                          <TableCell className="text-right font-bold text-foreground">
-                            {formatCurrency(payroll.paidAmount || payroll.netSalary)}
+                          <TableCell className="text-right">
+                            <div className="space-y-0.5">
+                              <p className="text-[10px] text-muted-foreground">
+                                {isPieceRate
+                                  ? `Ishbay: ${formatCurrency(workBasedAmount)}`
+                                  : `Davomat: ${formatCurrency(workBasedAmount)}`}
+                              </p>
+                              {!isPieceRate && (
+                                <p className="text-[10px] text-muted-foreground/80">
+                                  {payroll.presentDays || 0}/{payroll.workingDays || 0} kun
+                                </p>
+                              )}
+                              <p className="text-[10px] text-blue-400">
+                                Hisob: {formatCurrency(calculatedAmount)}
+                              </p>
+                              <p className="font-bold text-foreground">
+                                {formatCurrency(finalAmount)}
+                              </p>
+                            </div>
                           </TableCell>
                           <TableCell className="text-right">
                             {remaining !== 0 ? (
@@ -835,6 +1313,81 @@ export default function PayrollPage() {
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={calculateDialogOpen} onOpenChange={setCalculateDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Oylik hisoblashni tasdiqlang</DialogTitle>
+            <DialogDescription>
+              {MONTH_NAMES[selectedMonth - 1]} {selectedYear} uchun oyliklar yangilanadi va qoralama holatda saqlanadi.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-border/40 bg-muted/20 px-3 py-2.5">
+              <p className="text-xs text-muted-foreground">Jami xodimlar</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{allRowsSummary.count}</p>
+            </div>
+            <div className="rounded-xl border border-border/40 bg-muted/20 px-3 py-2.5">
+              <p className="text-xs text-muted-foreground">Hisoblanadi</p>
+              <p className="mt-1 text-sm font-semibold text-emerald-400">{calculableRows.length}</p>
+            </div>
+            <div className="rounded-xl border border-border/40 bg-muted/20 px-3 py-2.5">
+              <p className="text-xs text-muted-foreground">Jami hisoblangan</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{formatCurrency(calculableRowsSummary.totalEarned)}</p>
+            </div>
+            <div className="rounded-xl border border-border/40 bg-muted/20 px-3 py-2.5">
+              <p className="text-xs text-muted-foreground">Jami to'lanadigan</p>
+              <p className="mt-1 text-sm font-semibold text-emerald-400">{formatCurrency(calculableRowsSummary.totalPayout)}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Badge variant="secondary">Avans: {formatCurrency(calculableRowsSummary.totalAdvances)}</Badge>
+            <Badge variant="secondary">Oldingi qoldiq: {formatCurrency(calculableRowsSummary.totalPreviousBalance)}</Badge>
+            {uncalculableRows.length > 0 && (
+              <Badge variant="warning">Skip: {uncalculableRows.length} ta</Badge>
+            )}
+          </div>
+
+          {uncalculableRows.length > 0 && (
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-400">
+              {uncalculableRows.length} ta fixed xodimda davomat yo'q, shuning uchun ular hozircha hisoblanmaydi.
+              <p className="mt-1 text-xs text-amber-300">
+                {uncalculableRows.slice(0, 4).map((row) => row.fullName).join(', ')}
+                {uncalculableRows.length > 4 ? '...' : ''}
+              </p>
+            </div>
+          )}
+
+          {hasActiveReviewFilter && (
+            <p className="text-xs text-muted-foreground">
+              Hozir jadvalda filter yoqilgan, lekin hisoblash tayyor bo'lgan barcha {calculableRows.length} xodim bo'yicha amalga oshiriladi.
+            </p>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCalculateDialogOpen(false)}
+              className="rounded-xl"
+              disabled={bulkCalculate.isPending}
+            >
+              Bekor qilish
+            </Button>
+            <Button
+              type="button"
+              onClick={handleCalculateAll}
+              className="gap-1.5 rounded-xl"
+              disabled={bulkCalculate.isPending}
+            >
+              {bulkCalculate.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Hisoblashni tasdiqlash
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create Advance Dialog */}
       <Dialog open={advanceDialogOpen} onOpenChange={setAdvanceDialogOpen}>

@@ -131,9 +131,9 @@ export default function AttendancePage() {
     setCells((prev) => {
       const userCells = { ...prev[userId] };
       const current = userCells[day];
-      const currentStatus = current?.status || 'PRESENT';
-      const idx = STATUS_CYCLE.indexOf(currentStatus);
-      const nextStatus = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
+      const nextStatus = current
+        ? STATUS_CYCLE[(STATUS_CYCLE.indexOf(current.status) + 1) % STATUS_CYCLE.length]
+        : 'PRESENT';
 
       userCells[day] = {
         status: nextStatus,

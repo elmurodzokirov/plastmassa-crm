@@ -1,15 +1,40 @@
-import { IsArray, ValidateNested, IsDateString, IsNotEmpty } from 'class-validator';
+import {
+  IsArray,
+  ValidateNested,
+  IsDateString,
+  IsNotEmpty,
+  IsMongoId,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  Max,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class BulkAttendanceItemDto {
+  @IsMongoId()
   @IsNotEmpty()
   user: string;
 
+  @IsEnum(['PRESENT', 'ABSENT', 'LATE', 'HALF_DAY', 'LEAVE'])
   @IsNotEmpty()
   status: string;
 
+  @IsNumber()
+  @Min(0)
+  @Max(24)
+  @IsOptional()
   hoursWorked?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
   overtimeHours?: number;
+
+  @IsString()
+  @IsOptional()
   notes?: string;
 }
 

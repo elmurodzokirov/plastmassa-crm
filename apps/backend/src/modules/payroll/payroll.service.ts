@@ -252,6 +252,31 @@ export class PayrollService {
 
   // ─── Payroll Methods ───────────────────────────────────────────
 
+  private extractExceptionMessage(error: unknown): string {
+    if (error instanceof BadRequestException || error instanceof NotFoundException) {
+      const response = error.getResponse();
+      if (typeof response === 'string') {
+        return response;
+      }
+      if (response && typeof response === 'object' && 'message' in response) {
+        const message = (response as { message?: string | string[] }).message;
+        if (Array.isArray(message)) {
+          return message.join(', ');
+        }
+        if (typeof message === 'string') {
+          return message;
+        }
+      }
+      return error.message;
+    }
+
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return "Payroll hisoblashda noma'lum xatolik yuz berdi.";
+  }
+
   async calculate(
     dto: CalculatePayrollDto,
     calculatedById: string,
@@ -295,6 +320,11 @@ export class PayrollService {
       );
 
       const { summary } = attendanceReport;
+      if (summary.totalDays === 0) {
+        throw new BadRequestException(
+          'Bu xodim uchun tanlangan oy bo‘yicha davomat kiritilmagan. Oylikni hisoblashdan oldin davomatni saqlang.',
+        );
+      }
       presentDays = summary.presentDays;
       absentDays = summary.absentDays;
       lateDays = summary.lateDays;
@@ -374,8 +404,12 @@ export class PayrollService {
   async bulkCalculate(
     bulkDto: BulkCalculatePayrollDto,
     calculatedById: string,
-  ): Promise<PayrollDocument[]> {
-    const results: PayrollDocument[] = [];
+  ): Promise<{
+    processed: PayrollDocument[];
+    skipped: Array<{ user: string; fullName?: string; reason: string }>;
+  }> {
+    const processed: PayrollDocument[] = [];
+    const skipped: Array<{ user: string; fullName?: string; reason: string }> = [];
 
     for (const item of bulkDto.items) {
       const dto: CalculatePayrollDto = {
@@ -387,11 +421,36 @@ export class PayrollService {
         deductions: item.deductions,
       };
 
-      const payroll = await this.calculate(dto, calculatedById);
-      results.push(payroll);
+      try {
+        const payroll = await this.calculate(dto, calculatedById);
+        processed.push(payroll);
+      } catch (error) {
+        if (error instanceof BadRequestException || error instanceof NotFoundException) {
+          let fullName: string | undefined;
+
+          try {
+            const user = await this.usersService.findById(item.user);
+            fullName = (user as any)?.fullName;
+          } catch {
+            fullName = undefined;
+          }
+
+          skipped.push({
+            user: item.user,
+            fullName,
+            reason: this.extractExceptionMessage(error),
+          });
+          continue;
+        }
+
+        throw error;
+      }
     }
 
-    return results;
+    return {
+      processed,
+      skipped,
+    };
   }
 
   async findAll(query: QueryPayrollDto) {
@@ -513,7 +572,7 @@ export class PayrollService {
       .exec();
   }
 
-  async getPayrollSlip(id: string): Promise<PayrollDocument> {
+  async getPayrollSlip(id: string): Promise<any> {
     const payroll = await this.payrollModel
       .findById(id)
       .populate({
@@ -528,6 +587,28 @@ export class PayrollService {
       throw new NotFoundException(`Payroll with ID "${id}" not found`);
     }
 
-    return payroll;
+    const payrollObject = payroll.toObject() as any;
+    const salaryType =
+      payrollObject.salaryType ||
+      (typeof payrollObject.user === 'object' && payrollObject.user !== null ? payrollObject.user.salaryType : undefined) ||
+      'FIXED';
+
+    if (salaryType === 'FIXED') {
+      const userId = typeof payrollObject.user === 'string'
+        ? payrollObject.user
+        : payrollObject.user?._id?.toString();
+
+      if (userId) {
+        const attendanceReport = await this.attendanceService.getMonthlyReport(
+          userId,
+          payrollObject.year,
+          payrollObject.month,
+        );
+
+        payrollObject.liveAttendanceSummary = attendanceReport.summary;
+      }
+    }
+
+    return payrollObject;
   }
 }
