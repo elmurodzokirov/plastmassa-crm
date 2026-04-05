@@ -11,7 +11,6 @@ import {
   Banknote,
   Wallet,
   BarChart3,
-  Settings,
   Shield,
   UserCog,
   ChevronLeft,
@@ -34,6 +33,7 @@ interface NavItem {
   path: string;
   actionPath?: string;
   actionLabel?: string;
+  actionPermission?: string;
   permission?: string;
 }
 
@@ -58,7 +58,7 @@ const navigation: NavigationEntry[] = [
     icon: ShoppingCart,
     name: 'Sotuv',
     children: [
-      { icon: ShoppingCart, name: 'Buyurtmalar', path: '/orders', actionPath: '/orders/new', actionLabel: 'Yangi', permission: 'orders:read' },
+      { icon: ShoppingCart, name: 'Buyurtmalar', path: '/orders', actionPath: '/orders/new', actionLabel: 'Yangi', actionPermission: 'orders:create', permission: 'orders:read' },
       { icon: Users, name: 'Mijozlar', path: '/customers', permission: 'customers:read' },
       { icon: RotateCcw, name: 'Qaytarishlar', path: '/returns', permission: 'returns:read' },
     ],
@@ -97,11 +97,10 @@ const navigation: NavigationEntry[] = [
 
   // Tizim
   {
-    icon: Settings,
+    icon: Shield,
     name: 'Tizim',
     children: [
       { icon: Shield, name: 'Rollar', path: '/roles', permission: 'users:create' },
-      { icon: Settings, name: 'Sozlamalar', path: '/settings', permission: 'settings:read' },
     ],
   },
 ];
@@ -168,6 +167,9 @@ export function Sidebar() {
 
   const renderNavItem = (item: NavItem, nested = false) => {
     const active = isItemActive(item.path);
+    const canUseAction =
+      item.actionPath &&
+      (!item.actionPermission || can(item.actionPermission));
 
     const linkContent = (
       <div key={item.path} className="flex items-center">
@@ -185,9 +187,9 @@ export function Sidebar() {
           <item.icon className={cn('h-5 w-5 shrink-0', active && 'text-indigo-400')} />
           {!sidebarCollapsed && <span className="truncate">{item.name}</span>}
         </NavLink>
-        {!sidebarCollapsed && item.actionPath && (
+        {!sidebarCollapsed && canUseAction && (
           <NavLink
-            to={item.actionPath}
+            to={item.actionPath!}
             onClick={(e) => { e.stopPropagation(); setSidebarOpen(false); }}
             className="ml-auto mr-1 p-1 rounded-lg hover:bg-indigo-500/20 text-muted-foreground hover:text-indigo-400 transition-colors"
             title={item.actionLabel || 'Kirim'}

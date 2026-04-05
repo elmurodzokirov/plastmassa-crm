@@ -156,7 +156,7 @@ export class ReportsService {
   }
 
   async getProductionReport(dateFrom?: string, dateTo?: string) {
-    const matchStage: any = {};
+    const matchStage: any = { status: 'APPROVED' };
 
     if (dateFrom || dateTo) {
       matchStage.date = {};
@@ -273,7 +273,13 @@ export class ReportsService {
       .sort({ name: 1 })
       .exec();
 
-    const lowStockAlerts: Array<{ name: string; type: string; currentStock: number; minStock: number }> = [];
+    const lowStockAlerts = products
+      .filter((product: any) => product.currentStock <= 0)
+      .map((product: any) => ({
+        name: product.name,
+        currentStock: product.currentStock,
+        minStock: 0,
+      }));
 
     return {
       products: products.map((p) => ({

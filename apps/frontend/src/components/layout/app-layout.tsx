@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/ui.store';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
+import { MockModeBanner } from './mock-mode-banner';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
 
 export function AppLayout() {
@@ -28,6 +29,7 @@ export function AppLayout() {
         )}
       >
         <Header />
+        <MockModeBanner />
         <div className="p-4 sm:p-6 lg:p-8">
           <Suspense
             fallback={

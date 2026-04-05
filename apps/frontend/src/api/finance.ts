@@ -66,6 +66,7 @@ export interface FinanceSummary {
 export interface ProfitAndLossData {
   totalRevenue: number;
   totalExpenses: number;
+  grossProfit?: number;
   netProfit: number;
   revenueByProduct: { name: string; total: number; quantity?: number }[];
   expensesByCategory: { category: string; total: number; count: number }[];

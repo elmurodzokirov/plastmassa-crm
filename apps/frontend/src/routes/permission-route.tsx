@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { usePermissions } from '@/hooks/use-permissions';
 
 interface PermissionRouteProps {
@@ -8,9 +8,17 @@ interface PermissionRouteProps {
 
 export function PermissionRoute({ permission, children }: PermissionRouteProps) {
   const { can } = usePermissions();
+  const location = useLocation();
 
   if (!can(permission)) {
-    return <Navigate to="/" replace />;
+    const from = `${location.pathname}${location.search}${location.hash}`;
+    return (
+      <Navigate
+        to="/access-denied"
+        replace
+        state={{ from, requiredPermission: permission }}
+      />
+    );
   }
 
   return <>{children}</>;

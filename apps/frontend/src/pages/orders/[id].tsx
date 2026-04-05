@@ -22,11 +22,14 @@ import {
   Truck,
   Clock,
   Hash,
+  RotateCcw,
 } from 'lucide-react';
-import type { Customer, User as UserType, Payment, PaymentMethodType } from '@plastmassa/shared';
+import type { Customer, User as UserType, Payment, PaymentMethodType, Return as ReturnEntity } from '@plastmassa/shared';
 import { cn, formatCurrency } from '@/lib/utils';
 import { useOrder, useUpdateOrderStatus, useDeliverOrder } from '@/hooks/use-orders';
 import { usePaymentsByOrder, useCreatePayment } from '@/hooks/use-payments';
+import { useReturns, useCreateReturn } from '@/hooks/use-returns';
+import { usePermissions } from '@/hooks/use-permissions';
 import { toast } from '@/components/ui/use-toast';
 
 import { Button } from '@/components/ui/button';
@@ -86,23 +89,47 @@ const paymentSchema = z.object({
 
 type PaymentFormData = z.infer<typeof paymentSchema>;
 
+interface ReturnDraftItem {
+  productId: string;
+  productName: string;
+  unitId: string;
+  unitName: string;
+  maxQuantity: number;
+  quantity: number;
+  price: number;
+}
+
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { can } = usePermissions();
+  const canUpdateOrders = can('orders:update');
+  const canCreatePayments = can('finance:create');
+  const canCreateReturns = can('returns:create');
+  const canReadReturns = can('returns:read');
 
   const { data: order, isLoading, isError } = useOrder(id || '');
   const { data: paymentsData, isLoading: isLoadingPayments } = usePaymentsByOrder(id || '');
+  const { data: returnsData, isLoading: isLoadingReturns } = useReturns(
+    id ? { order: id, limit: 50 } : undefined,
+    !!id && canReadReturns,
+  );
   const payments = Array.isArray(paymentsData) ? paymentsData : (paymentsData as any)?.items || [];
+  const returns = Array.isArray((returnsData as any)?.items) ? (returnsData as any).items as ReturnEntity[] : [];
   const updateStatusMutation = useUpdateOrderStatus();
   const createPaymentMutation = useCreatePayment();
+  const createReturnMutation = useCreateReturn();
   const deliverMutation = useDeliverOrder();
 
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [deliverDialogOpen, setDeliverDialogOpen] = useState(false);
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [deliveredTo, setDeliveredTo] = useState('');
   const [deliveryNotes, setDeliveryNotes] = useState('');
+  const [returnReason, setReturnReason] = useState('');
+  const [returnItems, setReturnItems] = useState<ReturnDraftItem[]>([]);
 
   const {
     register,
@@ -128,6 +155,14 @@ export default function OrderDetailPage() {
     return user.fullName;
   };
 
+  const getEntityId = (value: { _id: string } | string): string => {
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    return value._id;
+  };
+
   const handleStatusChange = useCallback(
     (newStatus: string) => {
       setPendingStatus(newStatus);
@@ -137,7 +172,7 @@ export default function OrderDetailPage() {
   );
 
   const confirmStatusChange = useCallback(async () => {
-    if (!id || !pendingStatus) return;
+    if (!id || !pendingStatus || !canUpdateOrders) return;
     try {
       await updateStatusMutation.mutateAsync({ id, status: pendingStatus });
       toast({
@@ -153,10 +188,10 @@ export default function OrderDetailPage() {
         variant: 'destructive',
       });
     }
-  }, [id, pendingStatus, updateStatusMutation]);
+  }, [id, pendingStatus, updateStatusMutation, canUpdateOrders]);
 
   const openPaymentDialog = useCallback(() => {
-    if (!order) return;
+    if (!order || !canCreatePayments) return;
     const remaining = order.totalAmount - order.paidAmount;
     reset({
       amount: remaining > 0 ? remaining : 0,
@@ -164,7 +199,7 @@ export default function OrderDetailPage() {
       notes: '',
     });
     setPaymentDialogOpen(true);
-  }, [order, reset]);
+  }, [order, reset, canCreatePayments]);
 
   const onPaymentSubmit = useCallback(
     async (data: PaymentFormData) => {
@@ -172,6 +207,16 @@ export default function OrderDetailPage() {
 
       const customer = getCustomer(order.customer);
       if (!customer) return;
+
+      const remainingAmount = Math.max(order.totalAmount - order.paidAmount, 0);
+      if (data.amount > remainingAmount) {
+        toast({
+          title: 'Xatolik',
+          description: "To'lov summasi qolgan qarzdorlikdan oshib ketdi",
+          variant: 'destructive',
+        });
+        return;
+      }
 
       try {
         await createPaymentMutation.mutateAsync({
@@ -187,10 +232,12 @@ export default function OrderDetailPage() {
         });
         setPaymentDialogOpen(false);
         reset();
-      } catch {
+      } catch (error: any) {
         toast({
           title: 'Xatolik',
-          description: "To'lovni qo'shishda xatolik yuz berdi",
+          description:
+            error?.response?.data?.message ||
+            "To'lovni qo'shishda xatolik yuz berdi",
           variant: 'destructive',
         });
       }
@@ -199,7 +246,7 @@ export default function OrderDetailPage() {
   );
 
   const handleDeliver = useCallback(async () => {
-    if (!id || !deliveredTo.trim()) return;
+    if (!id || !deliveredTo.trim() || !canUpdateOrders) return;
     try {
       await deliverMutation.mutateAsync({
         id,
@@ -222,7 +269,92 @@ export default function OrderDetailPage() {
         variant: 'destructive',
       });
     }
-  }, [id, deliveredTo, deliveryNotes, deliverMutation]);
+  }, [id, deliveredTo, deliveryNotes, deliverMutation, canUpdateOrders]);
+
+  const openReturnDialog = useCallback(() => {
+    if (!order || !canCreateReturns) return;
+
+    setReturnItems(
+      order.items.map((item) => ({
+        productId: getEntityId(item.product as any),
+        productName: item.productName,
+        unitId: getEntityId(item.unit as any),
+        unitName: item.unitName,
+        maxQuantity: item.quantity,
+        quantity: 0,
+        price: item.price,
+      })),
+    );
+    setReturnReason('');
+    setReturnDialogOpen(true);
+  }, [order, canCreateReturns]);
+
+  const updateReturnQuantity = useCallback((index: number, rawValue: number) => {
+    setReturnItems((prev) => {
+      const next = [...prev];
+      const item = next[index];
+      const safeValue = Number.isFinite(rawValue) ? rawValue : 0;
+      const quantity = Math.min(Math.max(safeValue, 0), item.maxQuantity);
+      next[index] = {
+        ...item,
+        quantity,
+      };
+      return next;
+    });
+  }, []);
+
+  const submitReturn = useCallback(async () => {
+    if (!order || !canCreateReturns) return;
+
+    const payloadItems = returnItems
+      .filter((item) => item.quantity > 0)
+      .map((item) => ({
+        product: item.productId,
+        unit: item.unitId,
+        quantity: item.quantity,
+        price: item.price,
+      }));
+
+    if (!payloadItems.length) {
+      toast({
+        title: 'Xatolik',
+        description: 'Kamida bitta mahsulot uchun miqdor kiriting',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!returnReason.trim()) {
+      toast({
+        title: 'Xatolik',
+        description: 'Qaytarish sababini kiriting',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      await createReturnMutation.mutateAsync({
+        order: order._id,
+        reason: returnReason.trim(),
+        items: payloadItems,
+      });
+      toast({
+        title: 'Muvaffaqiyatli',
+        description: 'Qaytarish arizasi yaratildi',
+      });
+      setReturnDialogOpen(false);
+      setReturnReason('');
+      setReturnItems([]);
+    } catch (error: any) {
+      toast({
+        title: 'Xatolik',
+        description:
+          error?.response?.data?.message || 'Qaytarish yaratishda xatolik yuz berdi',
+        variant: 'destructive',
+      });
+    }
+  }, [order, canCreateReturns, returnItems, returnReason, createReturnMutation]);
 
   if (isLoading) {
     return (
@@ -259,6 +391,10 @@ export default function OrderDetailPage() {
   const paymentInfo = PAYMENT_TYPE_MAP[order.paymentType] || { label: order.paymentType, variant: 'secondary' as const };
   const remaining = order.totalAmount - order.paidAmount;
   const statusLabel = pendingStatus ? STATUS_MAP[pendingStatus]?.label || pendingStatus : '';
+  const returnTotalAmount = returnItems.reduce(
+    (sum, item) => sum + item.quantity * item.price,
+    0,
+  );
 
   return (
     <div className="space-y-6">
@@ -320,32 +456,42 @@ export default function OrderDetailPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {order.status === 'PENDING' && (
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            {canUpdateOrders && order.status === 'PENDING' && (
               <Button
                 variant="outline"
                 onClick={() => navigate(`/orders/${id}/edit`)}
-                className="gap-2"
+                className="w-full gap-2 sm:w-auto"
               >
                 <Pencil className="h-4 w-4" />
                 Tahrirlash
               </Button>
             )}
-            {order.status !== 'CANCELLED' && remaining > 0 && (
+            {canCreatePayments && order.status !== 'CANCELLED' && remaining > 0 && (
               <Button
                 variant="outline"
                 onClick={openPaymentDialog}
-                className="gap-2"
+                className="w-full gap-2 sm:w-auto"
               >
                 <CreditCard className="h-4 w-4" />
                 To'lov qilish
               </Button>
             )}
-            {order.status !== 'CANCELLED' && !(order as any).deliveredTo && (
+            {canCreateReturns && order.status !== 'CANCELLED' && (
+              <Button
+                variant="outline"
+                onClick={openReturnDialog}
+                className="w-full gap-2 sm:w-auto"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Qaytarish
+              </Button>
+            )}
+            {canUpdateOrders && order.status !== 'CANCELLED' && !(order as any).deliveredTo && (
               <Button
                 variant="outline"
                 onClick={() => setDeliverDialogOpen(true)}
-                className="gap-2"
+                className="w-full gap-2 sm:w-auto"
               >
                 <Truck className="h-4 w-4" />
                 Topshirish
@@ -354,7 +500,7 @@ export default function OrderDetailPage() {
             <Button
               variant="outline"
               onClick={() => navigate(`/orders/${id}/check`)}
-              className="gap-2"
+              className="w-full gap-2 sm:w-auto"
             >
               <Printer className="h-4 w-4" />
               Check chop etish
@@ -412,62 +558,105 @@ export default function OrderDetailPage() {
                 Mahsulotlar
               </h2>
             </div>
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>#</TableHead>
-                  <TableHead>Mahsulot</TableHead>
-                  <TableHead>Birlik</TableHead>
-                  <TableHead>Miqdor</TableHead>
-                  <TableHead>Narx</TableHead>
-                  <TableHead>Jami</TableHead>
-                  <TableHead className="hidden sm:table-cell">Tannarx</TableHead>
-                  <TableHead className="hidden sm:table-cell">Foyda</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {order.items.map((item, index) => (
-                  <TableRow key={index}>
-                    <TableCell className="text-muted-foreground">
-                      {index + 1}
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {item.productName}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {item.unitName}
-                    </TableCell>
-                    <TableCell>{item.quantity}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {((item as any).discountPercent > 0 || (item as any).discountAmount > 0) ? (
-                        <div className="flex flex-col">
-                          <span className="line-through text-muted-foreground/60 text-xs">
-                            {formatCurrency((item as any).originalPrice || item.price)}
-                          </span>
-                          <div className="flex items-center gap-1">
-                            <span>{formatCurrency(item.price)}</span>
-                            <Badge variant="secondary" className="text-[10px] px-1 py-0">
-                              -{(item as any).discountPercent}%
-                            </Badge>
-                          </div>
-                        </div>
-                      ) : (
-                        formatCurrency(item.price)
-                      )}
-                    </TableCell>
-                    <TableCell className="font-medium">
+            <div className="space-y-3 p-4 md:hidden">
+              {order.items.map((item, index) => (
+                <div
+                  key={index}
+                  className="rounded-2xl border border-border/60 bg-background/60 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        #{index + 1}
+                      </p>
+                      <p className="mt-1 font-medium text-foreground">{item.productName}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {item.quantity} {item.unitName}
+                      </p>
+                    </div>
+                    <p className="text-right text-sm font-semibold text-foreground">
                       {formatCurrency(item.total)}
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell text-muted-foreground">
-                      {formatCurrency((item as any).totalCost || 0)}
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell font-medium text-emerald-400">
-                      {formatCurrency(item.total - ((item as any).totalCost || 0))}
-                    </TableCell>
+                    </p>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Narx</p>
+                      <p className="font-medium text-foreground">{formatCurrency(item.price)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Tannarx</p>
+                      <p className="font-medium text-foreground">
+                        {formatCurrency((item as any).totalCost || 0)}
+                      </p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground">Foyda</p>
+                      <p className="font-medium text-emerald-400">
+                        {formatCurrency(item.total - ((item as any).totalCost || 0))}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>#</TableHead>
+                    <TableHead>Mahsulot</TableHead>
+                    <TableHead>Birlik</TableHead>
+                    <TableHead>Miqdor</TableHead>
+                    <TableHead>Narx</TableHead>
+                    <TableHead>Jami</TableHead>
+                    <TableHead className="hidden sm:table-cell">Tannarx</TableHead>
+                    <TableHead className="hidden sm:table-cell">Foyda</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {order.items.map((item, index) => (
+                    <TableRow key={index}>
+                      <TableCell className="text-muted-foreground">
+                        {index + 1}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {item.productName}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {item.unitName}
+                      </TableCell>
+                      <TableCell>{item.quantity}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {((item as any).discountPercent > 0 || (item as any).discountAmount > 0) ? (
+                          <div className="flex flex-col">
+                            <span className="line-through text-muted-foreground/60 text-xs">
+                              {formatCurrency((item as any).originalPrice || item.price)}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <span>{formatCurrency(item.price)}</span>
+                              <Badge variant="secondary" className="text-[10px] px-1 py-0">
+                                -{(item as any).discountPercent}%
+                              </Badge>
+                            </div>
+                          </div>
+                        ) : (
+                          formatCurrency(item.price)
+                        )}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {formatCurrency(item.total)}
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell text-muted-foreground">
+                        {formatCurrency((item as any).totalCost || 0)}
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell font-medium text-emerald-400">
+                        {formatCurrency(item.total - ((item as any).totalCost || 0))}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </motion.div>
 
           {/* Payments History */}
@@ -529,6 +718,64 @@ export default function OrderDetailPage() {
               </Table>
             )}
           </motion.div>
+
+          {canReadReturns && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.23 }}
+              className="bg-card/60 backdrop-blur-xl border border-border/50 rounded-2xl p-6"
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <RotateCcw className="h-5 w-5 text-amber-400" />
+                <h2 className="text-lg font-semibold text-foreground">
+                  Qaytarishlar
+                </h2>
+              </div>
+
+              {isLoadingReturns ? (
+                <div className="flex items-center justify-center py-8">
+                  <LoadingSpinner size="md" />
+                </div>
+              ) : returns.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Bu buyurtma bo&apos;yicha qaytarishlar hali yaratilmagan.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {returns.map((returnDoc) => (
+                    <div
+                      key={returnDoc._id}
+                      className="rounded-2xl border border-border/60 bg-background/60 p-4"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant={returnDoc.status === 'APPROVED' ? 'success' : 'warning'}>
+                              {returnDoc.status === 'APPROVED' ? 'Tasdiqlangan' : 'Kutilmoqda'}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">
+                              {format(new Date(returnDoc.createdAt), 'dd.MM.yyyy HH:mm')}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm text-foreground">{returnDoc.reason}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {returnDoc.items.length} ta mahsulot
+                          </p>
+                        </div>
+                        <div className="text-left sm:text-right">
+                          <p className="text-xs text-muted-foreground">Jami</p>
+                          <p className="text-sm font-semibold text-foreground">
+                            {formatCurrency(returnDoc.totalAmount)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
 
           {/* Notes */}
           {order.notes && (
@@ -680,7 +927,7 @@ export default function OrderDetailPage() {
           </motion.div>
 
           {/* Status Change Actions */}
-          {order.status !== 'CANCELLED' && (
+          {canUpdateOrders && order.status !== 'CANCELLED' && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -732,147 +979,248 @@ export default function OrderDetailPage() {
       </div>
 
       {/* Status Change Confirmation Dialog */}
-      <ConfirmDialog
-        open={confirmDialogOpen}
-        onOpenChange={setConfirmDialogOpen}
-        title="Holatni o'zgartirish"
-        description={`Buyurtma holatini "${statusLabel}" ga o'zgartirmoqchimisiz?`}
-        onConfirm={confirmStatusChange}
-        loading={updateStatusMutation.isPending}
-        variant={pendingStatus === 'CANCELLED' ? 'destructive' : 'default'}
-      />
+      {canUpdateOrders && (
+        <ConfirmDialog
+          open={confirmDialogOpen}
+          onOpenChange={setConfirmDialogOpen}
+          title="Holatni o'zgartirish"
+          description={`Buyurtma holatini "${statusLabel}" ga o'zgartirmoqchimisiz?`}
+          onConfirm={confirmStatusChange}
+          loading={updateStatusMutation.isPending}
+          variant={pendingStatus === 'CANCELLED' ? 'destructive' : 'default'}
+        />
+      )}
 
       {/* Payment Dialog */}
-      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>To'lov qilish</DialogTitle>
-            <DialogDescription>
-              Buyurtma #{order.orderNumber} uchun to'lov qilish.
-              Qoldiq: {formatCurrency(remaining)}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit(onPaymentSubmit)} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="amount">
-                Summa <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="amount"
-                type="number"
-                min={1}
-                step="any"
-                placeholder="0"
-                {...register('amount')}
-              />
-              {errors.amount && (
-                <p className="text-xs text-destructive">{errors.amount.message}</p>
-              )}
-            </div>
+      {canCreatePayments && (
+        <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>To'lov qilish</DialogTitle>
+              <DialogDescription>
+                Buyurtma #{order.orderNumber} uchun to'lov qilish.
+                Qoldiq: {formatCurrency(remaining)}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit(onPaymentSubmit)} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="amount">
+                  Summa <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  min={1}
+                  step="any"
+                  placeholder="0"
+                  {...register('amount')}
+                />
+                {errors.amount && (
+                  <p className="text-xs text-destructive">{errors.amount.message}</p>
+                )}
+              </div>
 
-            <div className="space-y-2">
-              <Label>To'lov usuli</Label>
-              <Select
-                defaultValue="CASH"
-                onValueChange={(value) =>
-                  setValue('type', value as PaymentMethodType)
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CASH">Naqd</SelectItem>
-                  <SelectItem value="TRANSFER">O'tkazma</SelectItem>
-                  <SelectItem value="CARD">Karta</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+              <div className="space-y-2">
+                <Label>To'lov usuli</Label>
+                <Select
+                  defaultValue="CASH"
+                  onValueChange={(value) =>
+                    setValue('type', value as PaymentMethodType)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CASH">Naqd</SelectItem>
+                    <SelectItem value="TRANSFER">O'tkazma</SelectItem>
+                    <SelectItem value="CARD">Karta</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="paymentNotes">Izoh</Label>
-              <Textarea
-                id="paymentNotes"
-                placeholder="Qo'shimcha izoh..."
-                rows={2}
-                {...register('notes')}
-              />
+              <div className="space-y-2">
+                <Label htmlFor="paymentNotes">Izoh</Label>
+                <Textarea
+                  id="paymentNotes"
+                  placeholder="Qo'shimcha izoh..."
+                  rows={2}
+                  {...register('notes')}
+                />
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setPaymentDialogOpen(false)}
+                >
+                  Bekor qilish
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={createPaymentMutation.isPending}
+                >
+                  {createPaymentMutation.isPending && (
+                    <LoadingSpinner size="sm" className="mr-2 h-4 w-4" />
+                  )}
+                  To'lovni tasdiqlash
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {canCreateReturns && (
+        <Dialog open={returnDialogOpen} onOpenChange={setReturnDialogOpen}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Qaytarish yaratish</DialogTitle>
+              <DialogDescription>
+                Buyurtma #{order.orderNumber} ichidan qaytariladigan mahsulotlarni tanlang.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="space-y-3">
+                {returnItems.map((item, index) => (
+                  <div
+                    key={`${item.productId}-${item.unitId}`}
+                    className="rounded-2xl border border-border/60 bg-background/60 p-4"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-medium text-foreground">{item.productName}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Maksimum: {item.maxQuantity} {item.unitName}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-28">
+                          <Label className="text-xs text-muted-foreground">Miqdor</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={item.maxQuantity}
+                            step="any"
+                            value={item.quantity}
+                            onChange={(e) =>
+                              updateReturnQuantity(index, parseFloat(e.target.value) || 0)
+                            }
+                            className="mt-1"
+                          />
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-muted-foreground">Summa</p>
+                          <p className="text-sm font-semibold text-foreground">
+                            {formatCurrency(item.quantity * item.price)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="returnReason">
+                  Qaytarish sababi <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="returnReason"
+                  rows={3}
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  placeholder="Masalan: mahsulot sifati mos kelmadi yoki ortiqcha buyurtma qilingan"
+                />
+              </div>
+
+              <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-muted/30 px-4 py-3">
+                <span className="text-sm text-muted-foreground">Jami qaytarish summasi</span>
+                <span className="text-base font-semibold text-foreground">
+                  {formatCurrency(returnTotalAmount)}
+                </span>
+              </div>
             </div>
 
             <DialogFooter className="gap-2 sm:gap-0">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setPaymentDialogOpen(false)}
+                onClick={() => setReturnDialogOpen(false)}
               >
                 Bekor qilish
               </Button>
               <Button
-                type="submit"
-                disabled={createPaymentMutation.isPending}
+                type="button"
+                onClick={submitReturn}
+                disabled={createReturnMutation.isPending}
               >
-                {createPaymentMutation.isPending && (
+                {createReturnMutation.isPending && (
                   <LoadingSpinner size="sm" className="mr-2 h-4 w-4" />
                 )}
-                To'lovni tasdiqlash
+                Qaytarishni yuborish
               </Button>
             </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Deliver Dialog */}
-      <Dialog open={deliverDialogOpen} onOpenChange={setDeliverDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Buyurtmani topshirish</DialogTitle>
-            <DialogDescription>
-              Buyurtma #{order.orderNumber} ni kim qabul qilganini kiriting.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="deliveredTo">
-                Kim qabul qildi? <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="deliveredTo"
-                value={deliveredTo}
-                onChange={(e) => setDeliveredTo(e.target.value)}
-                placeholder="Qabul qiluvchi ismi..."
-              />
+      {canUpdateOrders && (
+        <Dialog open={deliverDialogOpen} onOpenChange={setDeliverDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Buyurtmani topshirish</DialogTitle>
+              <DialogDescription>
+                Buyurtma #{order.orderNumber} ni kim qabul qilganini kiriting.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="deliveredTo">
+                  Kim qabul qildi? <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="deliveredTo"
+                  value={deliveredTo}
+                  onChange={(e) => setDeliveredTo(e.target.value)}
+                  placeholder="Qabul qiluvchi ismi..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="deliveryNotes">Izoh</Label>
+                <Textarea
+                  id="deliveryNotes"
+                  value={deliveryNotes}
+                  onChange={(e) => setDeliveryNotes(e.target.value)}
+                  placeholder="Qo'shimcha izoh..."
+                  rows={2}
+                />
+              </div>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDeliverDialogOpen(false)}
+                >
+                  Bekor qilish
+                </Button>
+                <Button
+                  onClick={handleDeliver}
+                  disabled={!deliveredTo.trim() || deliverMutation.isPending}
+                >
+                  {deliverMutation.isPending && (
+                    <LoadingSpinner size="sm" className="mr-2 h-4 w-4" />
+                  )}
+                  Tasdiqlash
+                </Button>
+              </DialogFooter>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="deliveryNotes">Izoh</Label>
-              <Textarea
-                id="deliveryNotes"
-                value={deliveryNotes}
-                onChange={(e) => setDeliveryNotes(e.target.value)}
-                placeholder="Qo'shimcha izoh..."
-                rows={2}
-              />
-            </div>
-            <DialogFooter className="gap-2 sm:gap-0">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setDeliverDialogOpen(false)}
-              >
-                Bekor qilish
-              </Button>
-              <Button
-                onClick={handleDeliver}
-                disabled={!deliveredTo.trim() || deliverMutation.isPending}
-              >
-                {deliverMutation.isPending && (
-                  <LoadingSpinner size="sm" className="mr-2 h-4 w-4" />
-                )}
-                Tasdiqlash
-              </Button>
-            </DialogFooter>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

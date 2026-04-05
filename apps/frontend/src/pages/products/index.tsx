@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Product, Unit } from '@plastmassa/shared';
-import { cn, formatCurrency } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import {
   useProducts,
   useCreateProduct,
@@ -27,13 +27,14 @@ import {
   useDeleteProduct,
 } from '@/hooks/use-products';
 import { useUnits } from '@/hooks/use-units';
-import { ProductQuery } from '@/api/products';
+import { ProductQuery, ProductUpsertInput } from '@/api/products';
 import { toast } from '@/components/ui/use-toast';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -69,6 +70,7 @@ import { StatCard } from '@/components/shared/stat-card';
 import { DataTableWrapper } from '@/components/shared/data-table';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
+import { ProductImage } from '@/components/shared/product-image';
 
 const salesUnitSchema = z.object({
   unit: z.string().min(1, 'Birlikni tanlang'),
@@ -86,6 +88,15 @@ const productSchema = z.object({
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
+
+const EMPTY_PRODUCT_FORM_VALUES: ProductFormData = {
+  name: '',
+  baseUnit: '',
+  price: 0,
+  costPrice: 0,
+  pieceRate: 0,
+  salesUnits: [],
+};
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -117,6 +128,9 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [removeImage, setRemoveImage] = useState(false);
 
   const queryParams: ProductQuery = {
     page,
@@ -140,16 +154,35 @@ export default function ProductsPage() {
     formState: { errors },
   } = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
-    defaultValues: {
-      costPrice: 0,
-      salesUnits: [],
-    },
+    defaultValues: EMPTY_PRODUCT_FORM_VALUES,
   });
 
   const { fields: salesFields, append: appendSales, remove: removeSales } = useFieldArray({
     control,
     name: 'salesUnits',
   });
+
+  useEffect(() => {
+    if (!selectedImageFile) {
+      setPreviewImageUrl(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(selectedImageFile);
+    setPreviewImageUrl(objectUrl);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [selectedImageFile]);
+
+  const resetImageState = useCallback(() => {
+    setSelectedImageFile(null);
+    setPreviewImageUrl(null);
+    setRemoveImage(false);
+  }, []);
+
+  const effectivePreviewUrl = previewImageUrl || (!removeImage ? editingProduct?.imageUrl || null : null);
 
 
   const products = productsData?.items || [];
@@ -179,9 +212,10 @@ export default function ProductsPage() {
 
   const openCreateDialog = useCallback(() => {
     setEditingProduct(null);
-    reset({ name: '', baseUnit: '', price: 0, costPrice: 0, pieceRate: 0, salesUnits: [] });
+    reset(EMPTY_PRODUCT_FORM_VALUES);
+    resetImageState();
     setDialogOpen(true);
-  }, [reset]);
+  }, [reset, resetImageState]);
 
   const openEditDialog = useCallback(
     (product: Product) => {
@@ -208,9 +242,10 @@ export default function ProductsPage() {
         pieceRate: (product as any).pieceRate || 0,
         salesUnits,
       });
+      resetImageState();
       setDialogOpen(true);
     },
-    [reset],
+    [reset, resetImageState],
   );
 
   const openDeleteDialog = useCallback((product: Product) => {
@@ -218,15 +253,40 @@ export default function ProductsPage() {
     setDeleteDialogOpen(true);
   }, []);
 
+  const handleDialogOpenChange = useCallback(
+    (open: boolean) => {
+      setDialogOpen(open);
+      if (!open) {
+        resetImageState();
+      }
+    },
+    [resetImageState],
+  );
+
+  const handleImageChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0] || null;
+      setSelectedImageFile(file);
+      if (file) {
+        setRemoveImage(false);
+      }
+      event.target.value = '';
+    },
+    [],
+  );
+
   const onSubmit = useCallback(
     async (data: ProductFormData) => {
       try {
-        const payload = {
+        const payload: ProductUpsertInput = {
           name: data.name,
           baseUnit: data.baseUnit,
           price: data.price,
           costPrice: data.costPrice || 0,
+          pieceRate: data.pieceRate || 0,
           salesUnits: data.salesUnits || [],
+          image: selectedImageFile,
+          removeImage: !!editingProduct && !selectedImageFile && removeImage,
         };
 
         if (editingProduct) {
@@ -246,7 +306,8 @@ export default function ProductsPage() {
           });
         }
         setDialogOpen(false);
-        reset();
+        reset(EMPTY_PRODUCT_FORM_VALUES);
+        resetImageState();
       } catch {
         toast({
           title: 'Xatolik',
@@ -255,7 +316,7 @@ export default function ProductsPage() {
         });
       }
     },
-    [editingProduct, createMutation, updateMutation, reset],
+    [editingProduct, createMutation, updateMutation, reset, selectedImageFile, removeImage, resetImageState],
   );
 
   const handleDelete = useCallback(async () => {
@@ -386,12 +447,20 @@ export default function ProductsPage() {
               return (
                 <TableRow key={product._id}>
                   <TableCell>
-                    <button
-                      onClick={() => navigate(`/products/${product._id}`)}
-                      className="font-medium text-foreground hover:text-indigo-400 transition-colors text-left"
-                    >
-                      {product.name}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <ProductImage
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className="h-10 w-10 shrink-0 rounded-xl border border-border/60 bg-background"
+                        iconClassName="h-4 w-4"
+                      />
+                      <button
+                        onClick={() => navigate(`/products/${product._id}`)}
+                        className="font-medium text-foreground hover:text-indigo-400 transition-colors text-left"
+                      >
+                        {product.name}
+                      </button>
+                    </div>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell text-muted-foreground">
                     {unitSymbol}
@@ -499,7 +568,7 @@ export default function ProductsPage() {
       )}
 
       {/* Create/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
@@ -519,6 +588,52 @@ export default function ProductsPage() {
               </TabsList>
 
               <TabsContent value="basic" className="space-y-4 mt-4">
+                <div className="space-y-3">
+                  <Label>Mahsulot rasmi</Label>
+                  <div className="flex flex-col gap-4 rounded-2xl border border-dashed border-border/70 bg-muted/20 p-4 sm:flex-row sm:items-center">
+                    <ProductImage
+                      src={effectivePreviewUrl}
+                      alt={editingProduct?.name || 'Yangi mahsulot'}
+                      className="h-24 w-24 rounded-2xl border border-border/70 bg-background"
+                      iconClassName="h-8 w-8 text-muted-foreground"
+                    />
+                    <div className="flex-1 space-y-3">
+                      <Input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={handleImageChange}
+                        className="cursor-pointer"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        PNG, JPG yoki WEBP format. Maksimal hajm: 5 MB.
+                      </p>
+                      {selectedImageFile && (
+                        <div className="flex items-center justify-between gap-2 rounded-xl bg-background/80 px-3 py-2 text-xs text-muted-foreground">
+                          <span className="truncate">{selectedImageFile.name}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2"
+                            onClick={() => setSelectedImageFile(null)}
+                          >
+                            Bekor qilish
+                          </Button>
+                        </div>
+                      )}
+                      {editingProduct?.imageUrl && !selectedImageFile && (
+                        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Checkbox
+                            checked={removeImage}
+                            onCheckedChange={(checked) => setRemoveImage(checked === true)}
+                          />
+                          Joriy rasmni saqlashda olib tashlash
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="name">
                     Nomi <span className="text-destructive">*</span>
@@ -733,7 +848,7 @@ export default function ProductsPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setDialogOpen(false)}
+                onClick={() => handleDialogOpenChange(false)}
               >
                 Bekor qilish
               </Button>

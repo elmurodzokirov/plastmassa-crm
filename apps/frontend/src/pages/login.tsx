@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Phone, KeyRound, Loader2, ArrowLeft, RefreshCw } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Phone, KeyRound, Loader2, ArrowLeft, ArrowRight, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useLogin, useSendOtp, useVerifyOtp } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 
 type Step = 'phone' | 'otp';
 
@@ -57,7 +57,8 @@ export default function LoginPage() {
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const digits = e.target.value.replace(/\D/g, '').slice(0, 9);
+    const rawDigits = e.target.value.replace(/\D/g, '');
+    const digits = rawDigits.startsWith('998') ? rawDigits.slice(3, 12) : rawDigits.slice(0, 9);
     setPhone(digits);
   };
 
@@ -112,94 +113,126 @@ export default function LoginPage() {
     return `${min}:${sec.toString().padStart(2, '0')}`;
   };
 
+  const resetPhoneFlow = () => {
+    setStep('phone');
+    setError(null);
+    setCode('');
+  };
+
   return (
-    <div className="relative flex min-h-screen items-center justify-center p-4">
-      {/* Decorative background blurs */}
-      <div className="fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-40 -right-40 h-96 w-96 rounded-full bg-indigo-500/20 blur-3xl" />
-        <div className="absolute top-1/2 -left-40 h-96 w-96 rounded-full bg-purple-500/15 blur-3xl" />
-        <div className="absolute -bottom-40 right-1/4 h-96 w-96 rounded-full bg-cyan-500/10 blur-3xl" />
-      </div>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(15,23,42,0.08),transparent_30%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.12)_1px,transparent_1px)] [background-size:40px_40px]" />
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
+        className="relative w-full max-w-md"
       >
-        <Card className="border-border/50 bg-card/80 backdrop-blur-2xl shadow-2xl">
-          <CardHeader className="space-y-4 text-center pb-2">
-            <motion.div
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.2, duration: 0.4 }}
-              className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-500/20"
+        <Card className="rounded-2xl border border-border/80 bg-card p-8 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_20px_40px_rgba(15,23,42,0.08)]">
+          <div className="mb-8 text-center">
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              SaidBaraka CRM
+            </p>
+            <motion.h1
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="mt-2 text-3xl font-semibold tracking-tight text-foreground"
             >
-              <span className="text-2xl font-bold text-indigo-400">SB</span>
-            </motion.div>
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent">
-                SaidBaraka CRM
-              </h1>
-              <p className="mt-2 text-muted-foreground">Tizimga kirish</p>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-4">
+              Tizimga kirish
+            </motion.h1>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="mt-3 text-sm leading-6 text-muted-foreground"
+            >
+              {showAdminLogin
+                ? 'Admin login va parol bilan tizimga kiring'
+                : 'Tizimga ulangan telefon raqamingizni kiriting'}
+            </motion.p>
+          </div>
+
+          <CardContent className="p-0">
             {error && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
-                className="mb-4 rounded-xl bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-red-400"
+                className="mb-6 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-red-500"
               >
                 {error}
               </motion.div>
             )}
 
             {!showAdminLogin ? (
-              <>
+              <AnimatePresence mode="wait">
                 {step === 'phone' ? (
-                  <div className="space-y-4">
+                  <motion.form
+                    key="phone"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ duration: 0.3 }}
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleSendOtp();
+                    }}
+                    className="space-y-6"
+                  >
                     <div className="space-y-2">
                       <Label htmlFor="phone">Telefon raqam</Label>
                       <div className="relative">
                         <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <div className="absolute left-10 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">
-                          +998
-                        </div>
                         <Input
                           id="phone"
-                          value={formatPhone(phone)}
-                          onChange={handlePhoneChange}
+                          type="tel"
                           placeholder="90 123 45 67"
-                          className="pl-[4.5rem]"
-                          maxLength={12}
+                          value={phone}
+                          onChange={handlePhoneChange}
+                          inputMode="numeric"
+                          autoComplete="tel-national"
+                          className="pl-10"
+                          maxLength={9}
+                          autoFocus
                         />
                       </div>
                     </div>
 
                     <Button
-                      className="w-full h-11 text-base font-semibold"
-                      onClick={handleSendOtp}
+                      type="submit"
+                      className="h-10 w-full"
                       disabled={phone.length !== 9 || sendOtpMutation.isPending}
                     >
                       {sendOtpMutation.isPending ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Yuborilmoqda...
-                        </>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       ) : (
-                        'Kod yuborish'
+                        <ArrowRight className="mr-2 h-4 w-4" />
                       )}
+                      Kod yuborish
                     </Button>
-                  </div>
+                  </motion.form>
                 ) : (
-                  <div className="space-y-4">
+                  <motion.form
+                    key="otp"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ duration: 0.3 }}
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleVerifyOtp();
+                    }}
+                    className="space-y-6"
+                  >
                     <button
-                      onClick={() => { setStep('phone'); setError(null); setCode(''); }}
-                      className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      type="button"
+                      onClick={resetPhoneFlow}
+                      className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
                     >
                       <ArrowLeft className="h-3.5 w-3.5" />
-                      +998 {formatPhone(phone)}
+                      {formatPhone(phone)}
                     </button>
 
                     <div className="space-y-2">
@@ -210,56 +243,59 @@ export default function LoginPage() {
                           id="code"
                           value={code}
                           onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                          placeholder="000000"
-                          className="pl-10 text-center text-lg tracking-[0.5em] font-mono"
+                          placeholder="123456"
+                          className="pl-10 text-center text-lg tracking-widest"
                           maxLength={6}
+                          autoFocus
                         />
                       </div>
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>Telegram orqali yuborildi</span>
-                        {timer > 0 ? (
-                          <span>{formatTimer(timer)}</span>
-                        ) : (
-                          <button
-                            onClick={handleResend}
-                            disabled={sendOtpMutation.isPending}
-                            className="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 transition-colors"
-                          >
-                            <RefreshCw className="h-3 w-3" />
-                            Qayta yuborish
-                          </button>
-                        )}
+                      <div className="space-y-2 text-xs text-muted-foreground">
+                        <p>{formatPhone(phone)} raqamiga Telegram orqali yuborildi</p>
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Kodni kiriting va tizimga kiring</span>
+                          {timer > 0 ? (
+                            <span>{formatTimer(timer)}</span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={handleResend}
+                              disabled={sendOtpMutation.isPending}
+                              className="flex items-center gap-1 text-primary transition-colors hover:text-primary/80"
+                            >
+                              <RefreshCw className="h-3 w-3" />
+                              Qayta yuborish
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
 
                     <Button
-                      className="w-full h-11 text-base font-semibold"
-                      onClick={handleVerifyOtp}
+                      type="submit"
+                      className="h-10 w-full"
                       disabled={code.length !== 6 || verifyOtpMutation.isPending}
                     >
                       {verifyOtpMutation.isPending ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Tekshirilmoqda...
-                        </>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       ) : (
-                        'Tasdiqlash'
+                        <ShieldCheck className="mr-2 h-4 w-4" />
                       )}
+                      Tasdiqlash
                     </Button>
-                  </div>
+                  </motion.form>
                 )}
-
-                <div className="mt-4 text-center">
-                  <button
-                    onClick={() => { setShowAdminLogin(true); setError(null); }}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    Login/Parol bilan kirish
-                  </button>
-                </div>
-              </>
+              </AnimatePresence>
             ) : (
-              <div className="space-y-4">
+              <motion.form
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3 }}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleAdminLogin();
+                }}
+                className="space-y-6"
+              >
                 <div className="space-y-2">
                   <Label htmlFor="username">Foydalanuvchi nomi</Label>
                   <Input
@@ -267,6 +303,7 @@ export default function LoginPage() {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="username"
+                    autoFocus
                   />
                 </div>
 
@@ -277,35 +314,36 @@ export default function LoginPage() {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="********"
+                    placeholder="Parolni kiriting"
                   />
                 </div>
 
                 <Button
-                  className="w-full h-11 text-base font-semibold"
-                  onClick={handleAdminLogin}
+                  type="submit"
+                  className="h-10 w-full"
                   disabled={!username || !password || loginMutation.isPending}
                 >
                   {loginMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Kirish...
-                    </>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
-                    'Kirish'
+                    <ArrowRight className="mr-2 h-4 w-4" />
                   )}
+                  Kirish
                 </Button>
-
-                <div className="text-center">
-                  <button
-                    onClick={() => { setShowAdminLogin(false); setError(null); }}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    Telefon orqali kirish
-                  </button>
-                </div>
-              </div>
+              </motion.form>
             )}
+
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => {
+                  setShowAdminLogin((prev) => !prev);
+                  setError(null);
+                }}
+                className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {showAdminLogin ? 'Telefon orqali kirish' : 'Login/Parol bilan kirish'}
+              </button>
+            </div>
           </CardContent>
         </Card>
       </motion.div>

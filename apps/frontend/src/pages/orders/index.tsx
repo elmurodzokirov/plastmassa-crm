@@ -18,6 +18,7 @@ import { motion } from 'framer-motion';
 import type { Order, Customer } from '@plastmassa/shared';
 import { cn, formatCurrency } from '@/lib/utils';
 import { useOrders } from '@/hooks/use-orders';
+import { usePermissions } from '@/hooks/use-permissions';
 import { OrderQuery } from '@/api/orders';
 
 import { Button } from '@/components/ui/button';
@@ -77,6 +78,7 @@ const PAYMENT_TYPE_MAP: Record<string, { label: string; variant: 'default' | 'se
 
 export default function OrdersPage() {
   const navigate = useNavigate();
+  const { can } = usePermissions();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
@@ -111,6 +113,7 @@ export default function OrdersPage() {
   const allOrders = allOrdersData?.items || [];
   const pendingCount = allOrders.filter((o) => o.status === 'PENDING').length;
   const totalAmount = allOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+  const canCreateOrders = can('orders:create');
 
   const getCustomerName = (customer: string | Customer): string => {
     if (typeof customer === 'string') return customer;
@@ -127,10 +130,12 @@ export default function OrdersPage() {
             Jami {totalCount} ta buyurtma
           </p>
         </div>
-        <Button onClick={() => navigate('/orders/new')} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Yangi buyurtma
-        </Button>
+        {canCreateOrders && (
+          <Button onClick={() => navigate('/orders/new')} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Yangi buyurtma
+          </Button>
+        )}
       </div>
 
       {/* Stat Cards */}

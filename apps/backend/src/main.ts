@@ -1,6 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { mkdirSync } from 'fs';
 import { AppModule } from './app.module';
+import { PRODUCT_IMAGES_DIR, UPLOADS_ROOT } from './modules/products/product-image.utils';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -12,7 +15,12 @@ async function bootstrap() {
   logger.log(`CORS_ORIGINS: ${process.env.CORS_ORIGINS || 'not set'}`);
   logger.log(`TELEGRAM_BOT_TOKEN: ${process.env.TELEGRAM_BOT_TOKEN ? 'SET' : 'NOT SET'}`);
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  mkdirSync(PRODUCT_IMAGES_DIR, { recursive: true });
+  app.useStaticAssets(UPLOADS_ROOT, {
+    prefix: '/api/uploads/',
+  });
 
   app.setGlobalPrefix('api');
 

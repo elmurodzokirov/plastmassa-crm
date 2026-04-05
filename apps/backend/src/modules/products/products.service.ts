@@ -8,6 +8,17 @@ import { Product, ProductDocument } from './schemas/product.schema';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
+import {
+  deleteProductImage,
+  saveProductImage,
+  validateProductImage,
+} from './product-image.utils';
+
+type ProductImageUpload = {
+  buffer: Buffer;
+  mimetype?: string;
+  originalname?: string;
+};
 
 @Injectable()
 export class ProductsService {
@@ -16,9 +27,31 @@ export class ProductsService {
     private readonly productModel: Model<ProductDocument>,
   ) {}
 
-  async create(createProductDto: CreateProductDto): Promise<ProductDocument> {
-    const createdProduct = new this.productModel(createProductDto);
-    return createdProduct.save();
+  async create(
+    createProductDto: CreateProductDto,
+    imageFile?: ProductImageUpload,
+  ): Promise<ProductDocument> {
+    let imageUrl: string | undefined;
+
+    try {
+      validateProductImage(imageFile);
+
+      if (imageFile) {
+        imageUrl = await saveProductImage(imageFile, createProductDto.name);
+      }
+
+      const createdProduct = new this.productModel({
+        ...createProductDto,
+        ...(imageUrl ? { imageUrl } : {}),
+      });
+
+      return await createdProduct.save();
+    } catch (error) {
+      if (imageUrl) {
+        await deleteProductImage(imageUrl);
+      }
+      throw error;
+    }
   }
 
   async findAll(query: QueryProductDto) {
@@ -82,23 +115,68 @@ export class ProductsService {
   async update(
     id: string,
     updateProductDto: UpdateProductDto,
+    imageFile?: ProductImageUpload,
   ): Promise<ProductDocument> {
-    const { ...updateData } = updateProductDto;
-    delete (updateData as any).currentStock;
-    delete (updateData as any).costPerUnit;
-    delete (updateData as any).costPrice;
-
-    const updatedProduct = await this.productModel
-      .findByIdAndUpdate(id, { $set: updateData }, { new: true })
-      .populate('baseUnit')
-      .populate('salesUnits.unit')
-      .exec();
-
-    if (!updatedProduct) {
+    const existingProduct = await this.productModel.findById(id).exec();
+    if (!existingProduct) {
       throw new NotFoundException(`Product with ID "${id}" not found`);
     }
 
-    return updatedProduct;
+    const { ...updateData } = updateProductDto;
+    delete (updateData as any).currentStock;
+    delete (updateData as any).costPerUnit;
+    delete (updateData as any).removeImage;
+
+    validateProductImage(imageFile);
+
+    let uploadedImageUrl: string | undefined;
+    let shouldRemoveExistingImage = updateProductDto.removeImage === true;
+
+    if (imageFile) {
+      uploadedImageUrl = await saveProductImage(
+        imageFile,
+        updateProductDto.name || existingProduct.name,
+      );
+      shouldRemoveExistingImage = false;
+    }
+
+    const $set: Record<string, unknown> = { ...updateData };
+    const updateOps: Record<string, Record<string, unknown>> = { $set };
+
+    if (uploadedImageUrl) {
+      $set.imageUrl = uploadedImageUrl;
+    }
+
+    if (shouldRemoveExistingImage) {
+      updateOps.$unset = { imageUrl: 1 };
+    }
+
+    try {
+      const updatedProduct = await this.productModel
+        .findByIdAndUpdate(id, updateOps, { new: true })
+        .populate('baseUnit')
+        .populate('salesUnits.unit')
+        .exec();
+
+      if (!updatedProduct) {
+        throw new NotFoundException(`Product with ID "${id}" not found`);
+      }
+
+      if (uploadedImageUrl && existingProduct.imageUrl) {
+        await deleteProductImage(existingProduct.imageUrl);
+      }
+
+      if (shouldRemoveExistingImage && existingProduct.imageUrl) {
+        await deleteProductImage(existingProduct.imageUrl);
+      }
+
+      return updatedProduct;
+    } catch (error) {
+      if (uploadedImageUrl) {
+        await deleteProductImage(uploadedImageUrl);
+      }
+      throw error;
+    }
   }
 
   async remove(id: string): Promise<ProductDocument> {

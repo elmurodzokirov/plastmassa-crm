@@ -22,6 +22,9 @@ export class Product {
   @Prop({ required: true, trim: true })
   name: string;
 
+  @Prop()
+  imageUrl?: string;
+
   @Prop({ type: Types.ObjectId, ref: 'Unit', required: true })
   baseUnit: Types.ObjectId;
 

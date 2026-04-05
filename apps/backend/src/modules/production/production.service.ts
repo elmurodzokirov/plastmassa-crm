@@ -32,7 +32,10 @@ export class ProductionService {
 
     const materialsUsed: any[] = [];
     const totalMaterialCost = 0;
-    const costPerUnitProduced = 0;
+    const costPerUnitProduced =
+      dto.costPerUnitProduced !== undefined
+        ? dto.costPerUnitProduced
+        : product.costPrice || product.costPerUnit || 0;
 
     // Calculate earnedAmount
     const earnedAmount = dto.quantityProduced * product.price;
@@ -257,6 +260,7 @@ export class ProductionService {
     const logs = await this.productionLogModel
       .find({
         date: { $gte: startOfDay, $lte: endOfDay },
+        status: 'APPROVED',
       })
       .populate('product')
       .populate('worker', 'fullName username')

@@ -7,6 +7,7 @@ import { Order, OrderSchema } from '../orders/schemas/order.schema';
 import { StockMovement, StockMovementSchema } from '../stock/schemas/stock-movement.schema';
 import { ProductsModule } from '../products/products.module';
 import { CustomersModule } from '../customers/customers.module';
+import { ProductLotsModule } from '../product-lots/product-lots.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { CustomersModule } from '../customers/customers.module';
     ]),
     ProductsModule,
     CustomersModule,
+    ProductLotsModule,
   ],
   controllers: [ReturnsController],
   providers: [ReturnsService],

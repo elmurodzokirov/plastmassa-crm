@@ -29,17 +29,51 @@ export class PaymentsService {
   ): Promise<PaymentDocument> {
     const { customer, order, amount, type, notes } = createPaymentDto;
 
-    // Validate customer exists
-    await this.customersService.findById(customer);
+    const customerDoc = await this.customersService.findById(customer);
+    let maxPayableAmount = Math.max(customerDoc.currentDebt, 0);
 
-    // If order provided, validate it exists and belongs to customer
     if (order) {
       const orderDoc = await this.ordersService.findById(order);
-      if (orderDoc.customer.toString() !== customer) {
+      const orderCustomerId =
+        typeof orderDoc.customer === 'string'
+          ? orderDoc.customer
+          : (orderDoc.customer as any)?._id?.toString() ||
+            orderDoc.customer.toString();
+
+      if (orderCustomerId !== customer) {
         throw new BadRequestException(
           'Order does not belong to the specified customer',
         );
       }
+
+      if (orderDoc.status === 'CANCELLED') {
+        throw new BadRequestException(
+          'Bekor qilingan buyurtma uchun to\'lov qabul qilib bo\'lmaydi',
+        );
+      }
+
+      const remainingAmount = Math.max(
+        orderDoc.totalAmount - orderDoc.paidAmount,
+        0,
+      );
+
+      if (remainingAmount <= 0) {
+        throw new BadRequestException(
+          'Ushbu buyurtma uchun qarzdorlik qolmagan',
+        );
+      }
+
+      maxPayableAmount = Math.min(maxPayableAmount, remainingAmount);
+    }
+
+    if (maxPayableAmount <= 0) {
+      throw new BadRequestException('Mijozda yopiladigan qarzdorlik mavjud emas');
+    }
+
+    if (amount > maxPayableAmount) {
+      throw new BadRequestException(
+        'To\'lov summasi mavjud qarzdorlikdan oshib ketmoqda',
+      );
     }
 
     const payment = new this.paymentModel({
@@ -112,7 +146,7 @@ export class PaymentsService {
         .find(filter)
         .populate('customer')
         .populate('order')
-        .populate('createdBy', 'name email')
+        .populate('createdBy', 'fullName username')
         .sort(sort)
         .skip(skip)
         .limit(limit)
@@ -134,7 +168,7 @@ export class PaymentsService {
       .findById(id)
       .populate('customer')
       .populate('order')
-      .populate('createdBy', 'name email')
+      .populate('createdBy', 'fullName username')
       .exec();
 
     if (!payment) {

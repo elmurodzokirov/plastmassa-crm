@@ -4,6 +4,26 @@ import { Document, Types } from 'mongoose';
 export type OrderDocument = Order & Document;
 
 @Schema({ _id: false })
+export class LotConsumption {
+  @Prop({ type: Types.ObjectId, ref: 'ProductLot', required: true })
+  lot: Types.ObjectId;
+
+  @Prop({ required: true })
+  lotNumber: string;
+
+  @Prop({ required: true, min: 0 })
+  quantity: number;
+
+  @Prop({ required: true, min: 0 })
+  unitCost: number;
+
+  @Prop({ required: true, min: 0 })
+  totalCost: number;
+}
+
+export const LotConsumptionSchema = SchemaFactory.createForClass(LotConsumption);
+
+@Schema({ _id: false })
 export class OrderItem {
   @Prop({ type: Types.ObjectId, ref: 'Product', required: true })
   product: Types.ObjectId;
@@ -19,6 +39,15 @@ export class OrderItem {
 
   @Prop({ required: true, min: 0.001 })
   quantity: number;
+
+  @Prop({ required: true, min: 0.001 })
+  baseQuantity: number;
+
+  @Prop({ type: Types.ObjectId, ref: 'Unit', required: true })
+  baseUnit: Types.ObjectId;
+
+  @Prop({ required: true })
+  baseUnitName: string;
 
   @Prop({ default: 0 })
   originalPrice: number;
@@ -40,6 +69,9 @@ export class OrderItem {
 
   @Prop({ default: 0 })
   totalCost: number;
+
+  @Prop({ type: [LotConsumptionSchema], default: [] })
+  lotConsumptions: LotConsumption[];
 }
 
 export const OrderItemSchema = SchemaFactory.createForClass(OrderItem);
@@ -57,6 +89,9 @@ export class Order {
 
   @Prop({ required: true, min: 0 })
   totalAmount: number;
+
+  @Prop({ default: 0, min: 0 })
+  initialPaidAmount: number;
 
   @Prop({ default: 0, min: 0 })
   paidAmount: number;

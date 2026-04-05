@@ -6,6 +6,7 @@ import { PermissionRoute } from './permission-route';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
 
 const LoginPage = lazy(() => import('@/pages/login'));
+const AccessDeniedPage = lazy(() => import('@/pages/access-denied'));
 const DashboardPage = lazy(() => import('@/pages/dashboard'));
 const CustomersPage = lazy(() => import('@/pages/customers/index'));
 const CustomerDetailPage = lazy(() => import('@/pages/customers/[id]'));
@@ -18,13 +19,13 @@ const NewOrderPage = lazy(() => import('@/pages/orders/new'));
 const OrderDetailPage = lazy(() => import('@/pages/orders/[id]'));
 const EditOrderPage = lazy(() => import('@/pages/orders/edit'));
 const OrderCheckPage = lazy(() => import('@/pages/orders/check'));
+const ReturnsPage = lazy(() => import('@/pages/returns/index'));
 const ProductionPage = lazy(() => import('@/pages/production/index'));
 const AttendancePage = lazy(() => import('@/pages/attendance/index'));
 const PayrollPage = lazy(() => import('@/pages/payroll/index'));
 const PayrollSlipPage = lazy(() => import('@/pages/payroll/PayrollSlipPage'));
 const FinancePage = lazy(() => import('@/pages/finance/FinancePage'));
 const ReportsPage = lazy(() => import('@/pages/reports/ReportsPage'));
-const SettingsPage = lazy(() => import('@/pages/settings/SettingsPage'));
 const RolesPage = lazy(() => import('@/pages/roles/index'));
 const UsersPage = lazy(() => import('@/pages/users/index'));
 
@@ -47,6 +48,8 @@ export function AppRoutes() {
             </ProtectedRoute>
           }
         >
+          <Route path="access-denied" element={<AccessDeniedPage />} />
+
           {/* Dashboard — hammaga ochiq */}
           <Route index element={<DashboardPage />} />
 
@@ -58,6 +61,7 @@ export function AppRoutes() {
           <Route path="orders/:id" element={<PermissionRoute permission="orders:read"><OrderDetailPage /></PermissionRoute>} />
           <Route path="orders/:id/edit" element={<PermissionRoute permission="orders:update"><EditOrderPage /></PermissionRoute>} />
           <Route path="orders/:id/check" element={<PermissionRoute permission="orders:read"><OrderCheckPage /></PermissionRoute>} />
+          <Route path="returns" element={<PermissionRoute permission="returns:read"><ReturnsPage /></PermissionRoute>} />
 
           {/* Ombor */}
           <Route path="products" element={<PermissionRoute permission="products:read"><ProductsPage /></PermissionRoute>} />
@@ -78,7 +82,6 @@ export function AppRoutes() {
 
           {/* Tizim */}
           <Route path="roles" element={<PermissionRoute permission="users:create"><RolesPage /></PermissionRoute>} />
-          <Route path="settings" element={<PermissionRoute permission="settings:read"><SettingsPage /></PermissionRoute>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

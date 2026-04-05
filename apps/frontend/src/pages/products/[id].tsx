@@ -65,6 +65,7 @@ import {
 import { StatCard } from '@/components/shared/stat-card';
 import { DataTableWrapper } from '@/components/shared/data-table';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
+import { ProductImage } from '@/components/shared/product-image';
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -266,9 +267,12 @@ export default function ProductDetailPage() {
       >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-500/20">
-              <Package className="h-6 w-6 text-indigo-400" />
-            </div>
+            <ProductImage
+              src={product.imageUrl}
+              alt={product.name}
+              className="h-14 w-14 shrink-0 rounded-2xl border border-indigo-500/20 bg-indigo-500/10"
+              iconClassName="h-6 w-6 text-indigo-400"
+            />
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-bold text-foreground">{product.name}</h1>

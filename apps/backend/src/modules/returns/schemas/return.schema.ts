@@ -4,6 +4,26 @@ import { Document, Types } from 'mongoose';
 export type ReturnDocument = Return & Document;
 
 @Schema({ _id: false })
+export class LotConsumption {
+  @Prop({ type: Types.ObjectId, ref: 'ProductLot', required: true })
+  lot: Types.ObjectId;
+
+  @Prop({ required: true })
+  lotNumber: string;
+
+  @Prop({ required: true, min: 0 })
+  quantity: number;
+
+  @Prop({ required: true, min: 0 })
+  unitCost: number;
+
+  @Prop({ required: true, min: 0 })
+  totalCost: number;
+}
+
+export const LotConsumptionSchema = SchemaFactory.createForClass(LotConsumption);
+
+@Schema({ _id: false })
 export class ReturnItem {
   @Prop({ type: Types.ObjectId, ref: 'Product', required: true })
   product: Types.ObjectId;
@@ -20,11 +40,23 @@ export class ReturnItem {
   @Prop({ required: true, min: 0.001 })
   quantity: number;
 
+  @Prop({ required: true, min: 0.001 })
+  baseQuantity: number;
+
+  @Prop({ type: Types.ObjectId, ref: 'Unit', required: true })
+  baseUnit: Types.ObjectId;
+
+  @Prop({ required: true })
+  baseUnitName: string;
+
   @Prop({ required: true, min: 0 })
   price: number;
 
   @Prop({ required: true, min: 0 })
   total: number;
+
+  @Prop({ type: [LotConsumptionSchema], default: [] })
+  lotConsumptions: LotConsumption[];
 }
 
 export const ReturnItemSchema = SchemaFactory.createForClass(ReturnItem);

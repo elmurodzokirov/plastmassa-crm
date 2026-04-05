@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -9,7 +9,6 @@ import {
   Trash2,
   User,
   AlertTriangle,
-  Package,
   X,
   Percent,
 } from 'lucide-react';
@@ -33,6 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
+import { ProductImage } from '@/components/shared/product-image';
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -270,22 +270,31 @@ export default function NewOrderPage() {
       const createdOrder = await createOrderMutation.mutateAsync(orderData);
       toast({ title: 'Muvaffaqiyatli', description: 'Buyurtma yaratildi' });
       navigate(`/orders/${createdOrder._id}`);
-    } catch {
-      toast({ title: 'Xatolik', description: 'Buyurtma yaratishda xatolik', variant: 'destructive' });
+    } catch (error: any) {
+      toast({
+        title: 'Xatolik',
+        description: error?.response?.data?.message || 'Buyurtma yaratishda xatolik',
+        variant: 'destructive',
+      });
     }
   }, [selectedCustomer, cart, cartTotal, paidAmount, paymentType, dueDate, notes, createOrderMutation, navigate]);
 
-  const canSubmit = !!selectedCustomer && cart.length > 0;
   const remaining = cartTotal - paidAmount;
   const wouldExceedDebtLimit =
     selectedCustomer && paymentType === 'DEBT'
       ? selectedCustomer.currentDebt + remaining > selectedCustomer.debtLimit && selectedCustomer.debtLimit > 0
       : false;
+  const hasInvalidPaidAmount = paidAmount < 0 || paidAmount > cartTotal;
+  const canSubmit =
+    !!selectedCustomer &&
+    cart.length > 0 &&
+    !wouldExceedDebtLimit &&
+    !hasInvalidPaidAmount;
 
   return (
-    <div className="h-[calc(100vh-6rem)] flex flex-col">
+    <div className="min-h-[calc(100vh-6rem)] flex flex-col">
       {/* Top Bar */}
-      <div className="flex items-center gap-4 mb-4 shrink-0">
+      <div className="mb-4 flex shrink-0 flex-col gap-4 lg:flex-row lg:items-center">
         <Button
           variant="ghost"
           size="icon"
@@ -297,7 +306,7 @@ export default function NewOrderPage() {
         <h1 className="text-xl font-semibold text-foreground shrink-0">Yangi sotuv</h1>
 
         {/* Customer selector */}
-        <div className="flex-1 max-w-md relative">
+        <div className="relative w-full flex-1 lg:max-w-md">
           {selectedCustomer ? (
             <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-primary/5 border border-primary/20">
               <User className="h-4 w-4 text-primary shrink-0" />
@@ -365,9 +374,9 @@ export default function NewOrderPage() {
       </div>
 
       {/* Main Layout */}
-      <div className="flex-1 flex gap-4 min-h-0">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row">
         {/* LEFT — Products */}
-        <div className="flex-[3] flex flex-col min-h-0 rounded-xl border border-border/80 bg-card shadow-sm p-4">
+        <div className="flex min-h-[18rem] flex-col rounded-xl border border-border/80 bg-card p-4 shadow-sm xl:min-h-0 xl:flex-[3]">
           <div className="relative mb-3 shrink-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -386,7 +395,7 @@ export default function NewOrderPage() {
                 <p className="text-sm text-muted-foreground">Mahsulotlar topilmadi</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 p-1">
+              <div className="grid grid-cols-2 gap-3 p-1 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                 {products.map((product) => {
                   const cartItem = cart.find((item) => item.product._id === product._id);
                   return (
@@ -400,9 +409,17 @@ export default function NewOrderPage() {
                           : 'border-border/60 hover:bg-accent hover:border-border',
                       )}
                     >
-                      <div className={cn('flex h-9 w-9 items-center justify-center rounded-lg mb-1.5', cartItem ? 'bg-primary/10' : 'bg-muted')}>
-                        <Package className={cn('h-4 w-4', cartItem ? 'text-primary' : 'text-muted-foreground')} />
-                      </div>
+                      <ProductImage
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className={cn(
+                          'mb-1.5 h-12 w-12 rounded-xl border',
+                          cartItem
+                            ? 'border-primary/20 bg-primary/5'
+                            : 'border-border/60 bg-muted/50',
+                        )}
+                        iconClassName={cn('h-5 w-5', cartItem ? 'text-primary' : 'text-muted-foreground')}
+                      />
                       <p className="text-xs font-medium text-foreground truncate w-full leading-tight">{product.name}</p>
                       <p className="text-[11px] text-primary font-semibold mt-1">{formatCurrency(product.price)}</p>
                       <p className="text-[10px] text-muted-foreground">{product.currentStock} {getUnitName(product.baseUnit)}</p>
@@ -420,7 +437,7 @@ export default function NewOrderPage() {
         </div>
 
         {/* RIGHT — Cart + Payment */}
-        <div className="flex-[2] flex flex-col min-h-0 rounded-xl border border-border/80 bg-card shadow-sm">
+        <div className="flex min-h-[20rem] flex-col rounded-xl border border-border/80 bg-card shadow-sm xl:min-h-0 xl:flex-[2]">
           {/* Cart header */}
           <div className="flex items-center gap-2 px-4 py-3 border-b border-border/50 shrink-0">
             <ShoppingCart className="h-4 w-4 text-primary" />
@@ -451,23 +468,31 @@ export default function NewOrderPage() {
                     >
                       {/* Product name + unit + delete */}
                       <div className="flex items-center justify-between gap-2 mb-2">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-foreground truncate">{item.product.name}</p>
-                          {hasSalesUnits ? (
-                            <Select value={item.unit.id} onValueChange={(v) => handleUpdateUnit(index, v)}>
-                              <SelectTrigger className="h-5 w-auto text-[11px] text-muted-foreground border-0 bg-transparent p-0 gap-1 shadow-none focus:ring-0">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value={getUnitId(item.product.baseUnit)}>{getUnitName(item.product.baseUnit)}</SelectItem>
-                                {item.product.salesUnits.map((su, i) => (
-                                  <SelectItem key={i} value={getUnitId(su.unit)}>{getUnitName(su.unit)}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <p className="text-[11px] text-muted-foreground">{item.unit.name}</p>
-                          )}
+                        <div className="flex min-w-0 flex-1 items-start gap-2.5">
+                          <ProductImage
+                            src={item.product.imageUrl}
+                            alt={item.product.name}
+                            className="mt-0.5 h-10 w-10 shrink-0 rounded-xl border border-border/60 bg-background"
+                            iconClassName="h-4 w-4"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-foreground truncate">{item.product.name}</p>
+                            {hasSalesUnits ? (
+                              <Select value={item.unit.id} onValueChange={(v) => handleUpdateUnit(index, v)}>
+                                <SelectTrigger className="h-5 w-auto text-[11px] text-muted-foreground border-0 bg-transparent p-0 gap-1 shadow-none focus:ring-0">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value={getUnitId(item.product.baseUnit)}>{getUnitName(item.product.baseUnit)}</SelectItem>
+                                  {item.product.salesUnits.map((su, i) => (
+                                    <SelectItem key={i} value={getUnitId(su.unit)}>{getUnitName(su.unit)}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <p className="text-[11px] text-muted-foreground">{item.unit.name}</p>
+                            )}
+                          </div>
                         </div>
                         <button
                           onClick={() => handleRemoveFromCart(index)}
@@ -478,7 +503,7 @@ export default function NewOrderPage() {
                       </div>
 
                       {/* Quantity + Price + Total — clear horizontal layout */}
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         {/* Quantity stepper */}
                         <div className="flex items-center rounded-lg border border-border/80 bg-background overflow-hidden">
                           <button
@@ -535,7 +560,7 @@ export default function NewOrderPage() {
                         </button>
 
                         {/* Total */}
-                        <p className="text-sm font-bold text-foreground tabular-nums shrink-0 w-24 text-right">
+                        <p className="ml-auto w-full text-right text-sm font-bold text-foreground tabular-nums sm:ml-0 sm:w-24">
                           {formatCurrency(item.total)}
                         </p>
                       </div>
@@ -571,7 +596,7 @@ export default function NewOrderPage() {
           </div>
 
           {/* Bottom: Payment */}
-          <div className="shrink-0 border-t border-border/50 px-4 py-3 space-y-3">
+          <div className="shrink-0 space-y-3 border-t border-border/50 bg-card/95 px-4 py-3 backdrop-blur">
             {/* Total */}
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Jami</span>
@@ -579,9 +604,9 @@ export default function NewOrderPage() {
             </div>
 
             {/* Payment type + amount */}
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Select value={paymentType} onValueChange={(v) => setPaymentType(v)}>
-                <SelectTrigger className="h-9 w-[110px] text-sm">
+                <SelectTrigger className="h-9 w-full text-sm sm:w-[110px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -596,7 +621,11 @@ export default function NewOrderPage() {
                 max={cartTotal}
                 step="any"
                 value={paidAmount}
-                onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
+                onChange={(e) => {
+                  const rawValue = parseFloat(e.target.value);
+                  const nextValue = Number.isFinite(rawValue) ? rawValue : 0;
+                  setPaidAmount(Math.min(Math.max(nextValue, 0), cartTotal));
+                }}
                 disabled={paymentType === 'CASH' || paymentType === 'TRANSFER'}
                 className="h-9 flex-1 text-sm"
                 placeholder="To'langan"
@@ -622,6 +651,12 @@ export default function NewOrderPage() {
                 <span className="text-muted-foreground">Qoldiq (qarz)</span>
                 <span className="font-semibold text-red-500">{formatCurrency(remaining)}</span>
               </div>
+            )}
+
+            {hasInvalidPaidAmount && (
+              <p className="text-xs text-red-500">
+                To&apos;langan summa jami summadan katta bo&apos;lishi mumkin emas
+              </p>
             )}
 
             {/* Debt warning */}

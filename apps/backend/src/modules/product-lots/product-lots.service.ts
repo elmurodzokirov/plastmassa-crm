@@ -11,6 +11,14 @@ import { QueryProductLotDto } from './dto/query-product-lot.dto';
 import { ProductsService } from '../products/products.service';
 import { UnitsService } from '../units/units.service';
 
+export interface LotConsumptionRecord {
+  lot: string;
+  lotNumber: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+}
+
 @Injectable()
 export class ProductLotsService {
   constructor(
@@ -107,14 +115,14 @@ export class ProductLotsService {
   async consumeFIFO(
     productId: string,
     quantityNeeded: number,
-  ): Promise<{ lot: string; lotNumber: string; quantity: number; unitCost: number; totalCost: number }[]> {
+  ): Promise<LotConsumptionRecord[]> {
     const lots = await this.productLotModel
       .find({ product: productId, quantityRemaining: { $gt: 0 } })
       .sort({ createdAt: 1 })
       .exec();
 
     let remaining = quantityNeeded;
-    const consumptions: { lot: string; lotNumber: string; quantity: number; unitCost: number; totalCost: number }[] = [];
+    const consumptions: LotConsumptionRecord[] = [];
 
     for (const lot of lots) {
       if (remaining <= 0) break;
@@ -179,6 +187,61 @@ export class ProductLotsService {
       ).exec();
 
       remaining -= restore;
+    }
+  }
+
+  async restoreConsumptions(
+    consumptions: LotConsumptionRecord[],
+    quantityToRestore?: number,
+  ): Promise<void> {
+    const orderedConsumptions = [...consumptions].reverse();
+    let remaining = quantityToRestore;
+
+    for (const consumption of orderedConsumptions) {
+      if (remaining !== undefined && remaining <= 0) {
+        break;
+      }
+
+      const restoreQuantity =
+        remaining === undefined
+          ? consumption.quantity
+          : Math.min(remaining, consumption.quantity);
+
+      if (restoreQuantity <= 0) {
+        continue;
+      }
+
+      await this.productLotModel.findByIdAndUpdate(
+        consumption.lot,
+        { $inc: { quantityRemaining: restoreQuantity } },
+      ).exec();
+
+      if (remaining !== undefined) {
+        remaining -= restoreQuantity;
+      }
+    }
+  }
+
+  async consumeRecordedConsumptions(
+    consumptions: LotConsumptionRecord[],
+  ): Promise<void> {
+    for (const consumption of consumptions) {
+      const lot = await this.productLotModel.findById(consumption.lot).exec();
+
+      if (!lot) {
+        throw new NotFoundException(`Lot with ID "${consumption.lot}" not found`);
+      }
+
+      if (lot.quantityRemaining < consumption.quantity) {
+        throw new BadRequestException(
+          `Lot ${lot.lotNumber} da yetarli qoldiq yo'q`,
+        );
+      }
+
+      await this.productLotModel.findByIdAndUpdate(
+        consumption.lot,
+        { $inc: { quantityRemaining: -consumption.quantity } },
+      ).exec();
     }
   }
 

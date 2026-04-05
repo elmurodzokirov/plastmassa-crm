@@ -118,11 +118,6 @@ export function Header() {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate('/settings')}>
-                <UserCircle className="mr-2 h-4 w-4" />
-                <span>Profil</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-red-400 focus:text-red-400">
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Chiqish</span>

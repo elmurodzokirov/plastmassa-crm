@@ -94,6 +94,7 @@ export interface Customer {
 export interface Product {
   _id: string;
   name: string;
+  imageUrl?: string;
   baseUnit: string | Unit;
   salesUnits: SalesUnit[];
   currentStock: number;
@@ -119,6 +120,7 @@ export interface Order {
   customer: string | Customer;
   items: OrderItem[];
   totalAmount: number;
+  initialPaidAmount: number;
   paidAmount: number;
   totalCost: number;
   grossProfit: number;
@@ -141,6 +143,9 @@ export interface OrderItem {
   unit: string | Unit;
   unitName: string;
   quantity: number;
+  baseQuantity: number;
+  baseUnit: string | Unit;
+  baseUnitName: string;
   originalPrice: number;
   discountPercent: number;
   discountAmount: number;
@@ -148,6 +153,7 @@ export interface OrderItem {
   total: number;
   costPerUnit: number;
   totalCost: number;
+  lotConsumptions: LotConsumption[];
 }
 
 export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED';
@@ -167,6 +173,14 @@ export interface Payment {
 }
 
 export type PaymentMethodType = 'CASH' | 'TRANSFER' | 'CARD';
+
+export interface LotConsumption {
+  lot: string;
+  lotNumber: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+}
 
 // Stock Movement (Sprint 2)
 export interface StockMovement {
@@ -448,8 +462,12 @@ export interface ReturnItem {
   unit: string | Unit;
   unitName: string;
   quantity: number;
+  baseQuantity: number;
+  baseUnit: string | Unit;
+  baseUnitName: string;
   price: number;
   total: number;
+  lotConsumptions: LotConsumption[];
 }
 
 export interface Return {

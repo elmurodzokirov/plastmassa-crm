@@ -235,6 +235,7 @@ export class PayrollService {
           $match: {
             worker: new Types.ObjectId(userId),
             date: { $gte: startDate, $lte: endDate },
+            status: 'APPROVED',
           },
         },
         {

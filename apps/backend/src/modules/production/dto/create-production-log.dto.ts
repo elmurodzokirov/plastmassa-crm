@@ -38,6 +38,11 @@ export class CreateProductionLogDto {
   quantityProduced: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  costPerUnitProduced?: number;
+
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => MaterialUsedDto)
