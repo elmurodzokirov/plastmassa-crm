@@ -1,23 +1,19 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { useMockableQuery, useMockableMutation } from '@/mocks/mock-query';
-import { mockData } from '@/mocks/data';
+import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import { payrollApi, AdvanceQuery, PayrollQuery } from '@/api/payroll';
 
 // ── Advances ──────────────────────────────────────────────────────────
 
 export function useAdvances(params?: AdvanceQuery) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['advances', params],
     queryFn: () => payrollApi.getAdvances(params),
-    mockData: mockData.advances,
   });
 }
 
 export function useCreateAdvance() {
   const queryClient = useQueryClient();
-  return useMockableMutation({
+  return useMutation({
     mutationFn: payrollApi.createAdvance,
-    mockResult: {} as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['advances'] });
     },
@@ -26,10 +22,9 @@ export function useCreateAdvance() {
 
 export function useUpdateAdvanceStatus() {
   const queryClient = useQueryClient();
-  return useMockableMutation({
+  return useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       payrollApi.updateAdvanceStatus(id, status),
-    mockResult: {} as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['advances'] });
     },
@@ -39,27 +34,24 @@ export function useUpdateAdvanceStatus() {
 // ── Payroll ───────────────────────────────────────────────────────────
 
 export function usePayrolls(params?: PayrollQuery) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['payrolls', params],
     queryFn: () => payrollApi.getPayrolls(params),
-    mockData: mockData.payrolls,
   });
 }
 
 export function usePayroll(id: string) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['payroll', id],
     queryFn: () => payrollApi.getPayrollById(id),
     enabled: !!id,
-    mockData: mockData.payroll,
   });
 }
 
 export function useCalculatePayroll() {
   const queryClient = useQueryClient();
-  return useMockableMutation({
+  return useMutation({
     mutationFn: payrollApi.calculatePayroll,
-    mockResult: {} as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
       queryClient.invalidateQueries({ queryKey: ['payrollByMonth'] });
@@ -69,9 +61,8 @@ export function useCalculatePayroll() {
 
 export function useBulkCalculatePayroll() {
   const queryClient = useQueryClient();
-  return useMockableMutation({
+  return useMutation({
     mutationFn: payrollApi.bulkCalculate,
-    mockResult: {} as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
       queryClient.invalidateQueries({ queryKey: ['payrollByMonth'] });
@@ -81,10 +72,9 @@ export function useBulkCalculatePayroll() {
 
 export function useUpdatePayrollStatus() {
   const queryClient = useQueryClient();
-  return useMockableMutation({
+  return useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       payrollApi.updatePayrollStatus(id, status),
-    mockResult: {} as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
       queryClient.invalidateQueries({ queryKey: ['payrollByMonth'] });
@@ -94,19 +84,17 @@ export function useUpdatePayrollStatus() {
 }
 
 export function usePayrollByMonth(year: number, month: number) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['payrollByMonth', year, month],
     queryFn: () => payrollApi.getPayrollByMonth(year, month),
     enabled: !!year && !!month,
-    mockData: mockData.payrollByMonth,
   });
 }
 
 export function usePayrollSlip(id: string) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['payrollSlip', id],
     queryFn: () => payrollApi.getPayrollSlip(id),
     enabled: !!id,
-    mockData: mockData.payrollSlip,
   });
 }

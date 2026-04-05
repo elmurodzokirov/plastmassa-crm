@@ -154,7 +154,6 @@ export default function UsersPage() {
     const userRole = user.role;
     let rId = '';
     if (typeof userRole === 'object' && userRole?._id) {
-      // Roles listdan mos keluvchisini name bo'yicha topish (mock data uchun fallback)
       const matchById = (roles || []).find((r: any) => String(r._id) === String(userRole._id));
       if (matchById) {
         rId = String(matchById._id);

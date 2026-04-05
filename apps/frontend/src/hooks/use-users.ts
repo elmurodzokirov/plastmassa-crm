@@ -1,30 +1,25 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { useMockableQuery, useMockableMutation } from '@/mocks/mock-query';
-import { mockData } from '@/mocks/data';
+import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import { usersApi } from '@/api/users';
 
 export function useUsers(params?: any) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['users', params],
     queryFn: () => usersApi.getAll(params),
-    mockData: mockData.users,
   });
 }
 
 export function useUser(id: string) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['users', id],
     queryFn: () => usersApi.getById(id),
     enabled: !!id,
-    mockData: null,
   });
 }
 
 export function useCreateUser() {
   const queryClient = useQueryClient();
-  return useMockableMutation({
+  return useMutation({
     mutationFn: usersApi.create,
-    mockResult: {} as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
     },
@@ -33,9 +28,8 @@ export function useCreateUser() {
 
 export function useUpdateUser() {
   const queryClient = useQueryClient();
-  return useMockableMutation({
+  return useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => usersApi.update(id, data),
-    mockResult: {} as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
     },
@@ -44,9 +38,8 @@ export function useUpdateUser() {
 
 export function useDeleteUser() {
   const queryClient = useQueryClient();
-  return useMockableMutation({
+  return useMutation({
     mutationFn: (id: string) => usersApi.delete(id),
-    mockResult: {} as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
     },

@@ -1,30 +1,25 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { useMockableQuery, useMockableMutation } from '@/mocks/mock-query';
-import { mockData } from '@/mocks/data';
+import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import { paymentsApi, PaymentQuery } from '@/api/payments';
 
 export function usePayments(params?: PaymentQuery) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['payments', params],
     queryFn: () => paymentsApi.getAll(params),
-    mockData: mockData.payments,
   });
 }
 
 export function usePayment(id: string) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['payments', id],
     queryFn: () => paymentsApi.getById(id),
     enabled: !!id,
-    mockData: mockData.payment,
   });
 }
 
 export function useCreatePayment() {
   const queryClient = useQueryClient();
-  return useMockableMutation({
+  return useMutation({
     mutationFn: paymentsApi.create,
-    mockResult: {} as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });
@@ -34,19 +29,17 @@ export function useCreatePayment() {
 }
 
 export function usePaymentsByCustomer(customerId: string) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['payments', 'customer', customerId],
     queryFn: () => paymentsApi.getByCustomer(customerId),
     enabled: !!customerId,
-    mockData: mockData.paymentsByCustomer,
   });
 }
 
 export function usePaymentsByOrder(orderId: string) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['payments', 'order', orderId],
     queryFn: () => paymentsApi.getByOrder(orderId),
     enabled: !!orderId,
-    mockData: mockData.paymentsByOrder,
   });
 }

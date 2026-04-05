@@ -1,23 +1,19 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { useMockableQuery, useMockableMutation } from '@/mocks/mock-query';
-import { mockData } from '@/mocks/data';
+import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import { financeApi, ExpenseQuery, ExpenseData } from '@/api/finance';
 
 // ── Expenses ─────────────────────────────────────────────────────────
 
 export function useExpenses(params?: ExpenseQuery) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['expenses', params],
     queryFn: () => financeApi.getExpenses(params),
-    mockData: mockData.expenses,
   });
 }
 
 export function useCreateExpense() {
   const queryClient = useQueryClient();
-  return useMockableMutation({
+  return useMutation({
     mutationFn: (data: Partial<ExpenseData>) => financeApi.createExpense(data),
-    mockResult: {} as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['expenseStats'] });
@@ -30,10 +26,9 @@ export function useCreateExpense() {
 
 export function useUpdateExpense() {
   const queryClient = useQueryClient();
-  return useMockableMutation({
+  return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<ExpenseData> }) =>
       financeApi.updateExpense(id, data),
-    mockResult: {} as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['expenseStats'] });
@@ -46,9 +41,8 @@ export function useUpdateExpense() {
 
 export function useDeleteExpense() {
   const queryClient = useQueryClient();
-  return useMockableMutation({
+  return useMutation({
     mutationFn: (id: string) => financeApi.deleteExpense(id),
-    mockResult: {} as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['expenseStats'] });
@@ -60,54 +54,48 @@ export function useDeleteExpense() {
 }
 
 export function useExpenseStats(params?: { dateFrom?: string; dateTo?: string }) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['expenseStats', params],
     queryFn: () => financeApi.getExpenseStats(params),
-    mockData: mockData.expenseStats,
   });
 }
 
 // ── Finance ──────────────────────────────────────────────────────────
 
 export function useDebtors() {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['debtors'],
     queryFn: () => financeApi.getDebtors(),
-    mockData: mockData.financeDebtors,
   });
 }
 
 export function useCashFlow(params: { dateFrom?: string; dateTo?: string }) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['cashFlow', params],
     queryFn: () => financeApi.getCashFlow(params),
     enabled: !!params.dateFrom && !!params.dateTo,
-    mockData: mockData.cashFlow,
   });
 }
 
 export function useMonthlyCashFlow(year: number) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['monthlyCashFlow', year],
     queryFn: () => financeApi.getMonthlyCashFlow(year),
     enabled: !!year,
-    mockData: mockData.monthlyCashFlow,
   });
 }
 
 export function useFinanceSummary() {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['financeSummary'],
     queryFn: () => financeApi.getFinanceSummary(),
-    mockData: mockData.financeSummary,
   });
 }
 
 export function useProfitAndLoss(params: { dateFrom?: string; dateTo?: string }) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['profitAndLoss', params],
     queryFn: () => financeApi.getProfitAndLoss(params),
     enabled: !!params.dateFrom && !!params.dateTo,
-    mockData: mockData.profitAndLoss,
   });
 }

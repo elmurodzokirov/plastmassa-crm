@@ -7,12 +7,10 @@ interface UIState {
   theme: Theme;
   sidebarOpen: boolean;
   sidebarCollapsed: boolean;
-  isMockMode: boolean;
   setTheme: (theme: Theme) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
   toggleCollapse: () => void;
-  toggleMockMode: () => void;
 }
 
 function applyTheme(theme: Theme) {
@@ -37,7 +35,6 @@ export const useUIStore = create<UIState>()(
       theme: 'dark',
       sidebarOpen: false,
       sidebarCollapsed: false,
-      isMockMode: false,
 
       setTheme: (theme) => {
         applyTheme(theme);
@@ -52,16 +49,12 @@ export const useUIStore = create<UIState>()(
 
       toggleCollapse: () =>
         set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
-
-      toggleMockMode: () =>
-        set((state) => ({ isMockMode: !state.isMockMode })),
     }),
     {
       name: 'saidbaraka-ui-storage',
       partialize: (state) => ({
         theme: state.theme,
         sidebarCollapsed: state.sidebarCollapsed,
-        isMockMode: state.isMockMode,
       }),
     },
   ),

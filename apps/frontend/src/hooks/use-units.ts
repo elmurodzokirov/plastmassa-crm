@@ -1,11 +1,9 @@
-import { useMockableQuery } from '@/mocks/mock-query';
-import { mockData } from '@/mocks/data';
+import { useQuery } from '@tanstack/react-query';
 import { unitsApi } from '@/api/units';
 
 export function useUnits() {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['units'],
     queryFn: unitsApi.getAll,
-    mockData: mockData.units,
   });
 }

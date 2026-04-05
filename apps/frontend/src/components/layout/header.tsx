@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Menu, Sun, Moon, Monitor, LogOut, UserCircle, FlaskConical } from 'lucide-react';
+import { Menu, Sun, Moon, Monitor, LogOut, UserCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth.store';
 import { useUIStore } from '@/stores/ui.store';
@@ -18,7 +18,7 @@ import {
 export function Header() {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
-  const { theme, setTheme, setSidebarOpen, isMockMode, toggleMockMode } = useUIStore();
+  const { theme, setTheme, setSidebarOpen } = useUIStore();
 
   const handleLogout = () => {
     logout();
@@ -78,23 +78,6 @@ export function Header() {
               <Monitor className="h-4 w-4" />
             </Button>
           </div>
-
-          {/* Mock mode toggle */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              'h-9 w-9 rounded-xl border transition-colors',
-              isMockMode
-                ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30'
-                : 'border-border/50 text-muted-foreground hover:text-foreground',
-            )}
-            onClick={toggleMockMode}
-            title="Demo rejim"
-          >
-            <FlaskConical className="h-4 w-4" />
-          </Button>
-
           {/* User dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

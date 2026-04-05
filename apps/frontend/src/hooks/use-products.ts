@@ -1,31 +1,26 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { useMockableQuery, useMockableMutation } from '@/mocks/mock-query';
-import { mockData } from '@/mocks/data';
+import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import { productsApi, ProductQuery } from '@/api/products';
 import type { Product } from '@plastmassa/shared';
 
 export function useProducts(params?: ProductQuery) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['products', params],
     queryFn: () => productsApi.getAll(params),
-    mockData: mockData.products,
   });
 }
 
 export function useProduct(id: string) {
-  return useMockableQuery({
+  return useQuery({
     queryKey: ['products', id],
     queryFn: () => productsApi.getById(id),
     enabled: !!id,
-    mockData: mockData.product,
   });
 }
 
 export function useCreateProduct() {
   const queryClient = useQueryClient();
-  return useMockableMutation({
+  return useMutation({
     mutationFn: productsApi.create,
-    mockResult: {} as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
     },
@@ -34,10 +29,9 @@ export function useCreateProduct() {
 
 export function useUpdateProduct() {
   const queryClient = useQueryClient();
-  return useMockableMutation({
+  return useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) =>
       productsApi.update(id, data),
-    mockResult: {} as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
     },
@@ -46,9 +40,8 @@ export function useUpdateProduct() {
 
 export function useDeleteProduct() {
   const queryClient = useQueryClient();
-  return useMockableMutation({
+  return useMutation({
     mutationFn: productsApi.delete,
-    mockResult: {} as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
     },
