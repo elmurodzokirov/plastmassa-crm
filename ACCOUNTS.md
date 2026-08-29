@@ -1,72 +1,47 @@
-# Plastmassa CRM — Foydalanuvchi hisoblar
+# Sardoba Ko'za Plast CRM — Hisoblar haqida
 
-## Login sahifasi
+## Birinchi ishga tushirish
 
-`http://localhost:6001/login`
+Tizimda hech qanday foydalanuvchi bo'lmasa, login sahifasi o'rniga avtomatik
+ravishda **"Tizimni sozlash"** (`/setup`) sahifasi ochiladi. Shu yerda bosh
+administrator (Direktor rolidagi) hisobi yaratiladi:
 
-## Hisoblar
+- To'liq ism
+- Login (username)
+- Telefon raqam
+- Parol (kamida 6 belgi)
 
-| Rol | Username | Parol | Ism | Telefon |
-|-----|----------|-------|-----|---------|
-| **Direktor** | admin | admin123 | Administrator | +998900000000 |
-| **Sotuv menejeri** | sales1 | password123 | Aziz Karimov | +998901111111 |
-| **Operator** | operator1 | password123 | Bobur Toshmatov | +998902222222 |
-| **Operator** | operator2 | password123 | Jasur Mirzayev | +998902222233 |
-| **Omborchi** | warehouse1 | password123 | Sardor Aliyev | +998903333333 |
-| **Kassir** | cashier1 | password123 | Nilufar Rahimova | +998904444444 |
-| **Ish.chiq. boshlig'i** | production1 | password123 | Rustam Ergashev | +998905555555 |
-| **Hisobchi** | accountant1 | password123 | Madina Yusupova | +998906666666 |
+Bu forma faqat `users` kolleksiyasi bo'sh bo'lganda ishlaydi — birinchi hisob
+yaratilgandan so'ng avtomatik yopiladi.
+
+## Keyingi xodimlarni qo'shish
+
+Administrator kirgandan so'ng **Kadrlar → Xodimlar → Yangi xodim** orqali
+qo'shimcha foydalanuvchilar (login, telefon, parol, rol) qo'shiladi.
+
+## Kirish usullari
+
+- **Telefon + Telegram OTP** (asosiy usul): xodim botga `/start` bosib
+  telefon raqamini ulaydi, kirishda Telegram orqali tasdiqlash kodi keladi.
+- **Login/Parol** (zaxira usul): login sahifasida "Login/Parol bilan kirish"
+  tugmasi orqali.
 
 ## Rollar va ruxsatlar
 
-### Direktor
-Barcha ruxsatlarga ega (tizim roli, o'zgartirib bo'lmaydi)
+Standart rollar (Direktor, Sotuv menejeri, Kassir, Omborchi, Ishlab chiqarish
+boshlig'i, Hisobchi, Operator) va ularning ruxsatlari **Tizim → Rollar**
+bo'limida ko'rish va tahrirlash mumkin.
 
-### Sotuv menejeri
-- Mijozlar: yaratish, ko'rish, tahrirlash, o'chirish
-- Buyurtmalar: yaratish, ko'rish, tahrirlash, o'chirish
-- Mahsulotlar: ko'rish
-- Ombor: ko'rish
-- Hisobotlar: ko'rish
+## Mahalliy dev muhitda parolni tiklash
 
-### Kassir
-- Moliya: yaratish, ko'rish, tahrirlash (to'lov, xarajat)
-- Mijozlar: ko'rish
-- Buyurtmalar: ko'rish
-- Ish haqi: ko'rish
-- Hisobotlar: ko'rish
-
-### Omborchi
-- Mahsulotlar: yaratish, ko'rish, tahrirlash, o'chirish
-- Ombor: yaratish, ko'rish, tahrirlash
-- Ishlab chiqarish: ko'rish
-- Buyurtmalar: ko'rish
-- Hisobotlar: ko'rish
-
-### Ishlab chiqarish boshlig'i
-- Ishlab chiqarish: yaratish, ko'rish, tahrirlash
-- Mahsulotlar: ko'rish
-- Ombor: ko'rish
-- Davomat: yaratish, ko'rish, tahrirlash
-- Hisobotlar: ko'rish
-
-### Hisobchi
-- Ish haqi: yaratish, ko'rish, tahrirlash
-- Moliya: yaratish, ko'rish, tahrirlash
-- Davomat: ko'rish
-- Mijozlar: ko'rish
-- Buyurtmalar: ko'rish
-- Hisobotlar: ko'rish
-- Foydalanuvchilar: ko'rish
-
-### Operator
-- Ishlab chiqarish: ko'rish
-- Davomat: ko'rish
-
-## Seed ishga tushirish
+Agar mahalliy (localhost) muhitda mavjud foydalanuvchining parolini
+unutgan bo'lsangiz, quyidagi skript orqali qayta o'rnatish mumkin (faqat
+`.env`dagi `MONGODB_URI` ko'rsatgan bazaga ta'sir qiladi):
 
 ```bash
-npm run seed
+cd apps/backend
+npx ts-node src/seeds/reset-local-password.ts <username> <yangi_parol>
 ```
 
-> Diqqat: seed ishga tushirishdan oldin MongoDB da `plastmassa_crm` bazasi bo'sh bo'lishi kerak.
+> Diqqat: bu skriptni productionga qarshi ehtiyotkorlik bilan ishlating —
+> to'g'ridan-to'g'ri bazadagi parolni almashtiradi.
