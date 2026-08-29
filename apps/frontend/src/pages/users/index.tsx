@@ -94,6 +94,7 @@ export default function UsersPage() {
 
   // Form state
   const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [roleId, setRoleId] = useState('');
@@ -132,6 +133,7 @@ export default function UsersPage() {
 
   const resetForm = () => {
     setFullName('');
+    setUsername('');
     setPhone('');
     setPassword('');
     setRoleId('');
@@ -148,6 +150,7 @@ export default function UsersPage() {
   const openEdit = (user: any) => {
     setEditingUser(user);
     setFullName(user.fullName);
+    setUsername(user.username || '');
     setPhone(user.phone || '');
     setPassword('');
     // Role ID olish — populate qilingan bo'lsa _id, aks holda string
@@ -187,6 +190,10 @@ export default function UsersPage() {
     try {
       if (editingUser) {
         const data: any = { fullName, phone, role: roleId, salaryType, baseSalary: baseSalaryInput };
+        const trimmedUsername = username.trim();
+        if (trimmedUsername && trimmedUsername !== editingUser.username) {
+          data.username = trimmedUsername;
+        }
         if (password) data.password = password;
         await updateMutation.mutateAsync({ id: editingUser._id, data });
         toast({ title: 'Xodim yangilandi' });
@@ -196,7 +203,8 @@ export default function UsersPage() {
           return;
         }
         const autoUsername = phone.replace(/\D/g, '').slice(-9) || `user_${Date.now()}`;
-        await createMutation.mutateAsync({ fullName, username: autoUsername, phone, password, role: roleId, salaryType, baseSalary: baseSalaryInput });
+        const finalUsername = username.trim() || autoUsername;
+        await createMutation.mutateAsync({ fullName, username: finalUsername, phone, password, role: roleId, salaryType, baseSalary: baseSalaryInput });
         toast({ title: 'Yangi xodim yaratildi' });
       }
       setDialogOpen(false);
@@ -316,7 +324,12 @@ export default function UsersPage() {
                   )}
                 >
                   <TableCell>
-                    <span className="font-medium text-foreground text-sm">{user.fullName}</span>
+                    <div className="flex flex-col">
+                      <span className="font-medium text-foreground text-sm">{user.fullName}</span>
+                      {user.username && (
+                        <span className="text-[11px] text-muted-foreground">@{user.username}</span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -422,9 +435,20 @@ export default function UsersPage() {
                 <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+998901234567" className="rounded-xl" />
               </div>
               <div className="space-y-2">
-                <Label>{editingUser ? 'Yangi parol' : 'Parol'} {!editingUser && <span className="text-red-400">*</span>}</Label>
-                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={editingUser ? 'Bo\'sh qoldiring' : 'Kamida 6 belgi'} className="rounded-xl" />
+                <Label>Login</Label>
+                <Input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Bo'sh qoldirilsa, telefondan avtomatik"
+                  className="rounded-xl"
+                />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>{editingUser ? 'Yangi parol' : 'Parol'} {!editingUser && <span className="text-red-400">*</span>}</Label>
+              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={editingUser ? 'Bo\'sh qoldiring' : 'Kamida 6 belgi'} className="rounded-xl" />
+              <p className="text-[10px] text-muted-foreground">Login va parol — "Login/Parol bilan kirish" orqali tizimga kirish uchun ishlatiladi</p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
