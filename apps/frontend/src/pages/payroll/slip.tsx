@@ -155,7 +155,7 @@ export default function PayrollSlipPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-foreground print-text tracking-wider">
-            SAIDBARAKA
+            SARDOBA KO'ZA PLAST
           </h1>
           <div className="mt-1 h-0.5 w-20 bg-indigo-500 mx-auto print-border" />
           <h2 className="mt-4 text-lg font-semibold text-foreground print-text">

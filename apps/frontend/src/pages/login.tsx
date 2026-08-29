@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Phone, KeyRound, Loader2, ArrowLeft, ArrowRight, RefreshCw, ShieldCheck } from 'lucide-react';
-import { useLogin, useSendOtp, useVerifyOtp } from '@/hooks/use-auth';
+import { useLogin, useSendOtp, useVerifyOtp, useSetupStatus } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,6 +15,13 @@ export default function LoginPage() {
   const sendOtpMutation = useSendOtp();
   const verifyOtpMutation = useVerifyOtp();
   const loginMutation = useLogin();
+  const { data: setupStatus } = useSetupStatus();
+
+  useEffect(() => {
+    if (setupStatus?.needsSetup) {
+      navigate('/setup', { replace: true });
+    }
+  }, [setupStatus, navigate]);
 
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
@@ -133,7 +140,7 @@ export default function LoginPage() {
         <Card className="rounded-2xl border border-border/80 bg-card p-8 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_20px_40px_rgba(15,23,42,0.08)]">
           <div className="mb-8 text-center">
             <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              SaidBaraka CRM
+              Sardoba Ko'za Plast CRM
             </p>
             <motion.h1
               initial={{ opacity: 0, y: -10 }}

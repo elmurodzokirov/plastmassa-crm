@@ -100,6 +100,10 @@ export class UsersService {
     return this.userModel.findOne({ username }).populate('role').exec();
   }
 
+  async count(): Promise<number> {
+    return this.userModel.countDocuments().exec();
+  }
+
   async findByPhone(phone: string): Promise<UserDocument | null> {
     return this.userModel.findOne({ phone }).populate('role').exec();
   }

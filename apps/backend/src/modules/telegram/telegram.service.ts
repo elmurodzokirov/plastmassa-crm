@@ -30,7 +30,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
     this.bot.start((ctx) => {
       ctx.reply(
-        'SaidBaraka CRM botiga xush kelibsiz!\n\n' +
+        "Sardoba Ko'za Plast CRM botiga xush kelibsiz!\n\n" +
         'Telefon raqamingizni ulash uchun quyidagi tugmani bosing:',
         {
           reply_markup: {
@@ -92,7 +92,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
     await this.bot.telegram.sendMessage(
       chatId,
-      `SaidBaraka CRM tasdiqlash kodingiz: *${code}*\n\nKod 5 daqiqa ichida amal qiladi.`,
+      `Sardoba Ko'za Plast CRM tasdiqlash kodingiz: *${code}*\n\nKod 5 daqiqa ichida amal qiladi.`,
       { parse_mode: 'Markdown' },
     );
   }

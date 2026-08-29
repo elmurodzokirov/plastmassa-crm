@@ -50,6 +50,17 @@ export interface AuthResponse {
   user: Omit<User, 'password'>;
 }
 
+export interface SetupStatusResponse {
+  needsSetup: boolean;
+}
+
+export interface SetupSuperAdminDto {
+  fullName: string;
+  username: string;
+  phone: string;
+  password: string;
+}
+
 export interface TokenPayload {
   sub: string;
   phone: string;

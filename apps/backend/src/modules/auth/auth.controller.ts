@@ -4,12 +4,23 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { SendOtpDto } from './dto/send-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { SetupSuperAdminDto } from './dto/setup-super-admin.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Get('setup-status')
+  async setupStatus() {
+    return this.authService.getSetupStatus();
+  }
+
+  @Post('setup')
+  async setup(@Body() dto: SetupSuperAdminDto) {
+    return this.authService.setupSuperAdmin(dto);
+  }
 
   @Post('login')
   async login(@Body() loginDto: LoginDto) {

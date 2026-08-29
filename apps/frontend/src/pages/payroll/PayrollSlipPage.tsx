@@ -10,7 +10,7 @@ import { useProductionLogsEnabled } from '@/hooks/use-production';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
 
-const COMPANY_NAME = 'SAIDBARAKA MChJ';
+const COMPANY_NAME = "SARDOBA KO'ZA PLAST MChJ";
 const COMPANY_SUBTITLE = 'Oylik maosh varaqasi';
 const MONTH_NAMES = [
   'Yanvar',

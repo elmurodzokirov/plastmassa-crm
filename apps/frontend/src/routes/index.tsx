@@ -6,6 +6,7 @@ import { PermissionRoute } from './permission-route';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
 
 const LoginPage = lazy(() => import('@/pages/login'));
+const SetupPage = lazy(() => import('@/pages/setup'));
 const AccessDeniedPage = lazy(() => import('@/pages/access-denied'));
 const DashboardPage = lazy(() => import('@/pages/dashboard'));
 const CustomersPage = lazy(() => import('@/pages/customers/index'));
@@ -40,6 +41,7 @@ export function AppRoutes() {
     >
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/setup" element={<SetupPage />} />
         <Route
           path="/"
           element={

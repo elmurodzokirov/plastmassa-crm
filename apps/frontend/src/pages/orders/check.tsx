@@ -9,7 +9,7 @@ import { useOrder } from '@/hooks/use-orders';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
 
-const COMPANY_NAME = 'SAIDBARAKA MChJ';
+const COMPANY_NAME = "SARDOBA KO'ZA PLAST MChJ";
 const COMPANY_ADDRESS = "O'zbekiston";
 
 export default function OrderCheckPage() {

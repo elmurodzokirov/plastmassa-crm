@@ -327,11 +327,11 @@ export function Sidebar() {
       <div className="flex h-16 items-center justify-between px-4 border-b border-border/50">
         <div className="flex items-center gap-3 overflow-hidden">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-500/20">
-            <span className="text-sm font-bold text-indigo-400">SB</span>
+            <span className="text-sm font-bold text-indigo-400">SKP</span>
           </div>
           {!sidebarCollapsed && (
             <span className="text-lg font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent whitespace-nowrap">
-              SaidBaraka CRM
+              Sardoba Ko'za Plast CRM
             </span>
           )}
         </div>

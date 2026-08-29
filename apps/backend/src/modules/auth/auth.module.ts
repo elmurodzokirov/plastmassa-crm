@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { UsersModule } from '../users/users.module';
+import { RolesModule } from '../roles/roles.module';
 import { Otp, OtpSchema } from './schemas/otp.schema';
 
 @Module({
@@ -24,6 +25,7 @@ import { Otp, OtpSchema } from './schemas/otp.schema';
     }),
     MongooseModule.forFeature([{ name: Otp.name, schema: OtpSchema }]),
     UsersModule,
+    RolesModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

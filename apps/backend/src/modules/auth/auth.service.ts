@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   BadRequestException,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -10,9 +11,11 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
+import { RolesService } from '../roles/roles.service';
 import { LoginDto } from './dto/login.dto';
 import { SendOtpDto } from './dto/send-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { SetupSuperAdminDto } from './dto/setup-super-admin.dto';
 import { UserDocument } from '../users/schemas/user.schema';
 import { Otp, OtpDocument } from './schemas/otp.schema';
 import { TelegramService } from '../telegram/telegram.service';
@@ -21,11 +24,55 @@ import { TelegramService } from '../telegram/telegram.service';
 export class AuthService {
   constructor(
     private readonly usersService: UsersService,
+    private readonly rolesService: RolesService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     @InjectModel(Otp.name) private readonly otpModel: Model<OtpDocument>,
     private readonly telegramService: TelegramService,
   ) {}
+
+  async getSetupStatus() {
+    const count = await this.usersService.count();
+    return { needsSetup: count === 0 };
+  }
+
+  async setupSuperAdmin(dto: SetupSuperAdminDto) {
+    const existingCount = await this.usersService.count();
+    if (existingCount > 0) {
+      throw new ConflictException(
+        "Tizimda allaqachon foydalanuvchilar mavjud, birinchi o'rnatish faqat bo'sh tizimda ishlaydi",
+      );
+    }
+
+    let directorRole = await this.rolesService.findByName('Direktor');
+    if (!directorRole) {
+      // Fallback: eng ko'p ruxsatga ega mavjud rolni olamiz
+      const roles = await this.rolesService.findAll();
+      directorRole = roles.sort((a, b) => b.permissions.length - a.permissions.length)[0];
+    }
+    if (!directorRole) {
+      throw new BadRequestException(
+        "Rol topilmadi. Avval kamida bitta rol (masalan 'Direktor') mavjud bo'lishi kerak",
+      );
+    }
+
+    const user = await this.usersService.create({
+      fullName: dto.fullName,
+      username: dto.username,
+      password: dto.password,
+      phone: dto.phone,
+      role: directorRole._id.toString(),
+      salaryType: 'FIXED',
+    });
+
+    const tokens = await this.generateTokens(user);
+
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      user: this.formatUser(user),
+    };
+  }
 
   async login(loginDto: LoginDto) {
     const user = await this.usersService.findByUsername(loginDto.username);

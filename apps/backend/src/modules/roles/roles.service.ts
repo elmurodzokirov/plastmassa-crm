@@ -48,6 +48,10 @@ export class RolesService {
     return role;
   }
 
+  async findByName(name: string): Promise<RoleDocument | null> {
+    return this.roleModel.findOne({ name }).exec();
+  }
+
   async getAllPermissions(): Promise<string[]> {
     return ALL_PERMISSIONS;
   }
