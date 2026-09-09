@@ -119,6 +119,17 @@ export class SuppliersService {
     return supplier;
   }
 
+  // Saldoni to'g'ridan-to'g'ri belgilash (masalan, boshlang'ich saldo kiritish/tuzatish uchun)
+  async setBalance(id: string, amount: number): Promise<SupplierDocument> {
+    const supplier = await this.supplierModel
+      .findByIdAndUpdate(id, { $set: { currentDebt: amount } }, { new: true })
+      .exec();
+    if (!supplier) {
+      throw new NotFoundException(`Supplier with ID "${id}" not found`);
+    }
+    return supplier;
+  }
+
   async getCreditors(): Promise<SupplierDocument[]> {
     return this.supplierModel
       .find({ currentDebt: { $gt: 0 } })

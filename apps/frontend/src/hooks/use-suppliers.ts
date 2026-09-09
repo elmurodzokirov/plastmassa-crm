@@ -50,6 +50,17 @@ export function useUpdateSupplier() {
   });
 }
 
+export function useSetSupplierBalance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, amount }: { id: string; amount: number }) =>
+      suppliersApi.setBalance(id, amount),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+    },
+  });
+}
+
 export function useDeleteSupplier() {
   const queryClient = useQueryClient();
   return useMutation({

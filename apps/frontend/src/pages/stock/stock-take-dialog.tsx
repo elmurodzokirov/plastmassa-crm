@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { Search } from 'lucide-react';
 import type { Product, Unit } from '@plastmassa/shared';
 import { cn, formatNumber } from '@/lib/utils';
 import { useCreateStockMovement } from '@/hooks/use-stock';
@@ -33,6 +34,7 @@ interface StockTakeDialogProps {
 export function StockTakeDialog({ open, onOpenChange, products }: StockTakeDialogProps) {
   const [counted, setCounted] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch] = useState('');
   const createMutation = useCreateStockMovement();
 
   useEffect(() => {
@@ -42,8 +44,16 @@ export function StockTakeDialog({ open, onOpenChange, products }: StockTakeDialo
         initial[p._id] = String(p.currentStock);
       });
       setCounted(initial);
+      setSearch('');
     }
   }, [open, products]);
+
+  // Filters the visible rows only — entered counts for hidden rows are kept intact.
+  const visibleProducts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter((p) => p.name.toLowerCase().includes(q));
+  }, [products, search]);
 
   const getUnitSymbol = (product: Product): string => {
     if (typeof product.baseUnit === 'object' && product.baseUnit !== null) {
@@ -126,6 +136,17 @@ export function StockTakeDialog({ open, onOpenChange, products }: StockTakeDialo
           </DialogDescription>
         </DialogHeader>
 
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            autoFocus
+            placeholder="Mahsulot qidirish..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 h-9"
+          />
+        </div>
+
         <div className="rounded-xl border border-border/60 overflow-hidden">
           <Table>
             <TableHeader>
@@ -137,7 +158,14 @@ export function StockTakeDialog({ open, onOpenChange, products }: StockTakeDialo
               </TableRow>
             </TableHeader>
             <TableBody>
-              {products.map((product) => {
+              {visibleProducts.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-6">
+                    Mahsulot topilmadi
+                  </TableCell>
+                </TableRow>
+              ) : (
+              visibleProducts.map((product) => {
                 const value = counted[product._id] ?? '';
                 const diff = value === '' ? 0 : Number(value) - product.currentStock;
                 return (
@@ -168,7 +196,8 @@ export function StockTakeDialog({ open, onOpenChange, products }: StockTakeDialo
                     </TableCell>
                   </TableRow>
                 );
-              })}
+              })
+              )}
             </TableBody>
           </Table>
         </div>

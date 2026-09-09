@@ -52,6 +52,17 @@ export function useUpdateCustomer() {
   });
 }
 
+export function useSetCustomerBalance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, amount }: { id: string; amount: number }) =>
+      customersApi.setBalance(id, amount),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+    },
+  });
+}
+
 export function useDeleteCustomer() {
   const queryClient = useQueryClient();
   return useMutation({

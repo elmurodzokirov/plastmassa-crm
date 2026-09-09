@@ -30,6 +30,9 @@ export const customersApi = {
   update: (id: string, data: Partial<Customer>) =>
     client.patch<Customer>(`/customers/${id}`, data).then((r) => r.data),
 
+  setBalance: (id: string, amount: number) =>
+    client.patch<Customer>(`/customers/${id}/balance`, { amount }).then((r) => r.data),
+
   delete: (id: string) =>
     client.delete(`/customers/${id}`).then((r) => r.data),
 

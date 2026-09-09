@@ -19,6 +19,7 @@ import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { QuerySupplierDto } from './dto/query-supplier.dto';
 import { CreateSupplierPaymentDto } from './dto/create-supplier-payment.dto';
 import { QuerySupplierPaymentDto } from './dto/query-supplier-payment.dto';
+import { SetSupplierBalanceDto } from './dto/set-balance.dto';
 
 @Controller('suppliers')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -68,6 +69,12 @@ export class SuppliersController {
   @Permissions('products:update')
   update(@Param('id') id: string, @Body() dto: UpdateSupplierDto) {
     return this.suppliersService.update(id, dto);
+  }
+
+  @Patch(':id/balance')
+  @Permissions('products:update')
+  setBalance(@Param('id') id: string, @Body() dto: SetSupplierBalanceDto) {
+    return this.suppliersService.setBalance(id, dto.amount);
   }
 
   @Delete(':id')

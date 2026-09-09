@@ -16,6 +16,7 @@ export interface SupplierUpsertInput {
   phone?: string;
   address?: string;
   notes?: string;
+  currentDebt?: number;
 }
 
 export interface SupplierPaymentQuery {
@@ -48,6 +49,9 @@ export const suppliersApi = {
 
   update: (id: string, data: Partial<SupplierUpsertInput> & { isActive?: boolean }) =>
     client.patch<Supplier>(`/suppliers/${id}`, data).then((r) => r.data),
+
+  setBalance: (id: string, amount: number) =>
+    client.patch<Supplier>(`/suppliers/${id}/balance`, { amount }).then((r) => r.data),
 
   delete: (id: string) =>
     client.delete(`/suppliers/${id}`).then((r) => r.data),

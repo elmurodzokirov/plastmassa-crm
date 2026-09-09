@@ -126,6 +126,19 @@ export class CustomersService {
     return customer;
   }
 
+  // Saldoni to'g'ridan-to'g'ri belgilash (masalan, boshlang'ich saldo kiritish/tuzatish uchun)
+  async setBalance(id: string, amount: number): Promise<CustomerDocument> {
+    const customer = await this.customerModel
+      .findByIdAndUpdate(id, { $set: { currentDebt: amount } }, { new: true })
+      .exec();
+
+    if (!customer) {
+      throw new NotFoundException(`Customer with ID "${id}" not found`);
+    }
+
+    return customer;
+  }
+
   async getDebtors(): Promise<CustomerDocument[]> {
     return this.customerModel
       .find({ currentDebt: { $gt: 0 } })

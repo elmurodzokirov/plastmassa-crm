@@ -11,6 +11,7 @@ import {
   Pencil,
   Trash2,
   Filter,
+  Scale,
 } from 'lucide-react';
 import type { Supplier } from '@plastmassa/shared';
 import { formatCurrency } from '@/lib/utils';
@@ -19,6 +20,7 @@ import {
   useCreateSupplier,
   useUpdateSupplier,
   useDeleteSupplier,
+  useSetSupplierBalance,
 } from '@/hooks/use-suppliers';
 import { SupplierQuery } from '@/api/suppliers';
 import { toast } from '@/components/ui/use-toast';
@@ -61,6 +63,7 @@ const supplierSchema = z.object({
   phone: z.string().optional(),
   address: z.string().optional(),
   notes: z.string().optional(),
+  openingBalance: z.coerce.number().optional(),
 });
 
 type SupplierFormData = z.infer<typeof supplierSchema>;
@@ -90,6 +93,9 @@ export default function SuppliersPage() {
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingSupplier, setDeletingSupplier] = useState<Supplier | null>(null);
+  const [balanceDialogOpen, setBalanceDialogOpen] = useState(false);
+  const [balanceSupplier, setBalanceSupplier] = useState<Supplier | null>(null);
+  const [balanceValue, setBalanceValue] = useState('0');
 
   const queryParams: SupplierQuery = {
     page,
@@ -104,6 +110,7 @@ export default function SuppliersPage() {
   const createMutation = useCreateSupplier();
   const updateMutation = useUpdateSupplier();
   const deleteMutation = useDeleteSupplier();
+  const setBalanceMutation = useSetSupplierBalance();
 
   const {
     register,
@@ -116,7 +123,7 @@ export default function SuppliersPage() {
 
   const openCreateDialog = useCallback(() => {
     setEditingSupplier(null);
-    reset({ name: '', phone: '', address: '', notes: '' });
+    reset({ name: '', phone: '', address: '', notes: '', openingBalance: 0 });
     setDialogOpen(true);
   }, [reset]);
 
@@ -139,17 +146,41 @@ export default function SuppliersPage() {
     setDeleteDialogOpen(true);
   }, []);
 
+  const openBalanceDialog = useCallback((supplier: Supplier) => {
+    setBalanceSupplier(supplier);
+    setBalanceValue(String(supplier.currentDebt || 0));
+    setBalanceDialogOpen(true);
+  }, []);
+
+  const handleSetBalance = useCallback(async () => {
+    if (!balanceSupplier) return;
+    const amount = Number(balanceValue);
+    if (Number.isNaN(amount)) {
+      toast({ title: 'Xatolik', description: "Saldo qiymati noto'g'ri", variant: 'destructive' });
+      return;
+    }
+    try {
+      await setBalanceMutation.mutateAsync({ id: balanceSupplier._id, amount });
+      toast({ title: 'Muvaffaqiyatli', description: 'Saldo yangilandi' });
+      setBalanceDialogOpen(false);
+      setBalanceSupplier(null);
+    } catch {
+      toast({ title: 'Xatolik', description: 'Saldoni yangilashda xatolik yuz berdi', variant: 'destructive' });
+    }
+  }, [balanceSupplier, balanceValue, setBalanceMutation]);
+
   const onSubmit = useCallback(
     async (data: SupplierFormData) => {
       try {
+        const { openingBalance, ...rest } = data;
         if (editingSupplier) {
-          await updateMutation.mutateAsync({ id: editingSupplier._id, data });
+          await updateMutation.mutateAsync({ id: editingSupplier._id, data: rest });
           toast({
             title: 'Muvaffaqiyatli',
             description: "Yetkazib beruvchi yangilandi",
           });
         } else {
-          await createMutation.mutateAsync(data);
+          await createMutation.mutateAsync({ ...rest, currentDebt: openingBalance || 0 });
           toast({
             title: 'Muvaffaqiyatli',
             description: "Yangi yetkazib beruvchi yaratildi",
@@ -332,6 +363,10 @@ export default function SuppliersPage() {
                           <Pencil className="mr-2 h-4 w-4" />
                           Tahrirlash
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openBalanceDialog(supplier)}>
+                          <Scale className="mr-2 h-4 w-4" />
+                          Saldoni tuzatish
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
                           onClick={() => openDeleteDialog(supplier)}
@@ -433,6 +468,22 @@ export default function SuppliersPage() {
               <Input placeholder="Manzil" {...register('address')} />
             </FormField>
 
+            {!editingSupplier && (
+              <FormField
+                label="Boshlang'ich saldo"
+                error={errors.openingBalance?.message}
+              >
+                <Input
+                  type="number"
+                  placeholder="0"
+                  {...register('openingBalance')}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Yetkazib beruvchining tizimga qo'shilishidan oldingi joriy qarzimiz (ixtiyoriy)
+                </p>
+              </FormField>
+            )}
+
             <FormField label="Izoh">
               <Textarea
                 placeholder="Qo'shimcha ma'lumot..."
@@ -472,6 +523,42 @@ export default function SuppliersPage() {
         loading={deleteMutation.isPending}
         variant="destructive"
       />
+
+      {/* Saldoni tuzatish */}
+      <Dialog open={balanceDialogOpen} onOpenChange={setBalanceDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Saldoni tuzatish</DialogTitle>
+            <DialogDescription>
+              <span className="font-medium text-foreground">{balanceSupplier?.name}</span> uchun joriy qarzimiz
+              summasini kiriting
+            </DialogDescription>
+          </DialogHeader>
+          <FormField label="Joriy qarz">
+            <Input
+              type="number"
+              value={balanceValue}
+              onChange={(e) => setBalanceValue(e.target.value)}
+              placeholder="0"
+            />
+          </FormField>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setBalanceDialogOpen(false)}
+            >
+              Bekor qilish
+            </Button>
+            <Button onClick={handleSetBalance} disabled={setBalanceMutation.isPending}>
+              {setBalanceMutation.isPending && (
+                <LoadingSpinner size="sm" className="mr-2 h-4 w-4" />
+              )}
+              Saqlash
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

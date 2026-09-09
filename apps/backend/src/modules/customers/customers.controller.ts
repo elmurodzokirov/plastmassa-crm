@@ -13,6 +13,7 @@ import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { QueryCustomerDto } from './dto/query-customer.dto';
+import { SetCustomerBalanceDto } from './dto/set-balance.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -55,6 +56,15 @@ export class CustomersController {
     @Body() updateCustomerDto: UpdateCustomerDto,
   ) {
     return this.customersService.update(id, updateCustomerDto);
+  }
+
+  @Patch(':id/balance')
+  @Permissions('customers:update')
+  async setBalance(
+    @Param('id') id: string,
+    @Body() dto: SetCustomerBalanceDto,
+  ) {
+    return this.customersService.setBalance(id, dto.amount);
   }
 
   @Delete(':id')
