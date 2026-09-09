@@ -36,6 +36,9 @@ export class User {
   @Prop()
   inactiveReason: string;
 
+  @Prop({ default: true })
+  showInAttendance: boolean;
+
   @Prop()
   lastActiveAt: Date;
 

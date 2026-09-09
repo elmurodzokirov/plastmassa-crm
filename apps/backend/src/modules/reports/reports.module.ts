@@ -7,6 +7,12 @@ import { ProductionLog, ProductionLogSchema } from '../production/schemas/produc
 import { Product, ProductSchema } from '../products/schemas/product.schema';
 import { Attendance, AttendanceSchema } from '../attendance/schemas/attendance.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
+import { Supplier, SupplierSchema } from '../suppliers/schemas/supplier.schema';
+import {
+  SupplierPayment,
+  SupplierPaymentSchema,
+} from '../suppliers/schemas/supplier-payment.schema';
+import { MaterialLot, MaterialLotSchema } from '../material-lots/schemas/material-lot.schema';
 
 @Module({
   imports: [
@@ -16,6 +22,9 @@ import { User, UserSchema } from '../users/schemas/user.schema';
       { name: Product.name, schema: ProductSchema },
       { name: Attendance.name, schema: AttendanceSchema },
       { name: User.name, schema: UserSchema },
+      { name: Supplier.name, schema: SupplierSchema },
+      { name: SupplierPayment.name, schema: SupplierPaymentSchema },
+      { name: MaterialLot.name, schema: MaterialLotSchema },
     ]),
   ],
   controllers: [ReportsController],

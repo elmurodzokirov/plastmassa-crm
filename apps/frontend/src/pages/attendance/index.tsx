@@ -19,6 +19,13 @@ import { toast } from '@/components/ui/use-toast';
 
 import { Button } from '@/components/ui/button';
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -73,6 +80,7 @@ export default function AttendancePage() {
   const [cells, setCells] = useState<CellMap>({});
   const [dirty, setDirty] = useState(false);
   const [savingDay, setSavingDay] = useState<number | null>(null);
+  const [confirmCell, setConfirmCell] = useState<{ userId: string; day: number; fullName: string } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
   const daysInMonth = getDaysInMonth(new Date(year, month - 1));
@@ -87,7 +95,10 @@ export default function AttendancePage() {
   });
   const bulkMutation = useBulkAttendance();
 
-  const users = usersData?.items || [];
+  const users = useMemo(
+    () => (usersData?.items || []).filter((u: any) => u.showInAttendance !== false),
+    [usersData],
+  );
   const records = attendanceData?.items || [];
 
   // Build cell map from records
@@ -126,25 +137,75 @@ export default function AttendancePage() {
     [year, month],
   );
 
-  // Toggle cell status on click
+  // Toggle cell status on click (cycles through statuses, then back to the initial/unmarked state)
   const toggleCell = useCallback((userId: string, day: number) => {
     setCells((prev) => {
       const userCells = { ...prev[userId] };
       const current = userCells[day];
-      const nextStatus = current
-        ? STATUS_CYCLE[(STATUS_CYCLE.indexOf(current.status) + 1) % STATUS_CYCLE.length]
-        : 'PRESENT';
 
-      userCells[day] = {
-        status: nextStatus,
-        hoursWorked: STATUS_HOURS[nextStatus],
-        overtimeHours: current?.overtimeHours || 0,
-      };
+      if (current && STATUS_CYCLE.indexOf(current.status) === STATUS_CYCLE.length - 1) {
+        // Last status in the cycle -> clear the cell back to the initial (unmarked) state
+        delete userCells[day];
+      } else {
+        const nextStatus = current
+          ? STATUS_CYCLE[STATUS_CYCLE.indexOf(current.status) + 1]
+          : 'PRESENT';
+
+        userCells[day] = {
+          status: nextStatus,
+          hoursWorked: STATUS_HOURS[nextStatus],
+          overtimeHours: current?.overtimeHours || 0,
+        };
+      }
 
       return { ...prev, [userId]: userCells };
     });
     setDirty(true);
   }, []);
+
+  // Kun turi: bugungi / o'tgan / kelajakdagi
+  const isFutureDay = useCallback(
+    (day: number) => {
+      const cellDate = new Date(year, month - 1, day);
+      cellDate.setHours(0, 0, 0, 0);
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      return cellDate.getTime() > todayStart.getTime();
+    },
+    [year, month],
+  );
+
+  const isPastDay = useCallback(
+    (day: number) => {
+      const cellDate = new Date(year, month - 1, day);
+      cellDate.setHours(0, 0, 0, 0);
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      return cellDate.getTime() < todayStart.getTime();
+    },
+    [year, month],
+  );
+
+  // Yacheyka bosilganda: bugungi kun — darhol o'zgaradi, o'tgan kun — tasdiqlash so'raladi,
+  // kelajakdagi kun — o'zgartirib bo'lmaydi
+  const handleCellClick = useCallback(
+    (userId: string, day: number, fullName: string) => {
+      if (isFutureDay(day)) return;
+      if (isPastDay(day)) {
+        setConfirmCell({ userId, day, fullName });
+        return;
+      }
+      toggleCell(userId, day);
+    },
+    [isFutureDay, isPastDay, toggleCell],
+  );
+
+  const confirmPastEdit = useCallback(() => {
+    if (confirmCell) {
+      toggleCell(confirmCell.userId, confirmCell.day);
+    }
+    setConfirmCell(null);
+  }, [confirmCell, toggleCell]);
 
   // Set all users for a specific day
   const markDayAllPresent = useCallback((day: number) => {
@@ -465,14 +526,24 @@ export default function AttendancePage() {
                             )}
                           >
                             <button
-                              onClick={() => toggleCell(user._id, day)}
+                              onClick={() => handleCellClick(user._id, day, user.fullName)}
+                              disabled={isFutureDay(day)}
                               className={cn(
                                 'w-full h-[32px] flex items-center justify-center text-[11px] font-bold transition-all duration-100',
                                 status
                                   ? STATUS_COLORS[status]
                                   : 'text-muted-foreground/30 hover:bg-muted/20',
+                                isFutureDay(day) && 'opacity-30 cursor-not-allowed hover:bg-transparent',
                               )}
-                              title={status ? `${STATUS_SHORT[status]} — bosib o'zgartiring` : 'Bosib belgilang'}
+                              title={
+                                isFutureDay(day)
+                                  ? "Kelajakdagi kunni belgilab bo'lmaydi"
+                                  : isPastDay(day)
+                                    ? "O'tgan kun — o'zgartirish tasdiqlashni talab qiladi"
+                                    : status
+                                      ? `${STATUS_SHORT[status]} — bosib o'zgartiring`
+                                      : 'Bosib belgilang'
+                              }
                             >
                               {status ? STATUS_SHORT[status] : isSun ? '—' : '·'}
                             </button>
@@ -550,6 +621,28 @@ export default function AttendancePage() {
           </div>
         </motion.div>
       )}
+
+      {/* O'tgan kunni o'zgartirishni tasdiqlash oynasi */}
+      <Dialog open={!!confirmCell} onOpenChange={(open) => { if (!open) setConfirmCell(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>O'tgan kunni o'zgartirish</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">{confirmCell?.fullName}</span> uchun{' '}
+            <span className="font-medium text-foreground">{confirmCell?.day}-{MONTH_NAMES[month - 1]}</span>{' '}
+            kunidagi davomatni o'zgartirmoqchimisiz?
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmCell(null)} className="rounded-xl">
+              Bekor qilish
+            </Button>
+            <Button onClick={confirmPastEdit} className="rounded-xl">
+              Tasdiqlash
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -18,6 +18,11 @@ export class FinanceController {
     return this.financeService.getDebtors();
   }
 
+  @Get('creditors')
+  async getCreditors() {
+    return this.financeService.getCreditors();
+  }
+
   @Get('cash-flow')
   async getCashFlow(
     @Query('dateFrom') dateFrom: string,

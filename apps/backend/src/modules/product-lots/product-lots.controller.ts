@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Param,
   Query,
@@ -9,7 +10,10 @@ import {
 } from '@nestjs/common';
 import { ProductLotsService } from './product-lots.service';
 import { CreateProductLotDto } from './dto/create-product-lot.dto';
+import { CreateProductLotBatchDto } from './dto/create-product-lot-batch.dto';
+import { UpdateProductLotBatchDto } from './dto/update-product-lot-batch.dto';
 import { QueryProductLotDto } from './dto/query-product-lot.dto';
+import { QueryProductLotBatchDto } from './dto/query-product-lot-batch.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -40,6 +44,28 @@ export class ProductLotsController {
     return this.productLotsService.getProductCostHistory(productId);
   }
 
+  // NOTE: these two must stay ABOVE the generic ":id" route below — otherwise
+  // "/product-lots/batches" would be matched as findOne({ id: 'batches' }).
+  @Get('batches')
+  async findAllBatches(@Query() query: QueryProductLotBatchDto) {
+    return this.productLotsService.findAllBatches(query);
+  }
+
+  @Get('batches/:batchNumber')
+  async findBatchDetail(@Param('batchNumber') batchNumber: string) {
+    return this.productLotsService.findBatchDetail(batchNumber);
+  }
+
+  @Patch('batches/:batchNumber')
+  @Permissions('stock:create')
+  async updateBatch(
+    @Param('batchNumber') batchNumber: string,
+    @Body() updateProductLotBatchDto: UpdateProductLotBatchDto,
+    @CurrentUser('_id') userId: string,
+  ) {
+    return this.productLotsService.updateBatch(batchNumber, updateProductLotBatchDto, userId);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.productLotsService.findById(id);
@@ -52,5 +78,14 @@ export class ProductLotsController {
     @CurrentUser('_id') userId: string,
   ) {
     return this.productLotsService.create(createProductLotDto, userId);
+  }
+
+  @Post('batch')
+  @Permissions('stock:create')
+  async createBatch(
+    @Body() createProductLotBatchDto: CreateProductLotBatchDto,
+    @CurrentUser('_id') userId: string,
+  ) {
+    return this.productLotsService.createBatch(createProductLotBatchDto, userId);
   }
 }

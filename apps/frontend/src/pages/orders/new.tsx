@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, forwardRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -33,6 +33,8 @@ import {
 } from '@/components/ui/select';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
 import { ProductImage } from '@/components/shared/product-image';
+import { SearchCombobox } from '@/components/shared/search-combobox';
+import { QuickCreateCustomerDialog } from '@/components/shared/quick-create-customer-dialog';
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -54,26 +56,32 @@ interface CartItem {
 }
 
 // Auto-select input content on focus for quick editing
-function SelectOnFocusInput(props: React.ComponentProps<typeof Input>) {
-  return (
-    <Input
-      {...props}
-      onFocus={(e) => {
-        e.target.select();
-        props.onFocus?.(e);
-      }}
-    />
-  );
-}
+const SelectOnFocusInput = forwardRef<HTMLInputElement, React.ComponentProps<typeof Input>>(
+  (props, ref) => {
+    return (
+      <Input
+        {...props}
+        ref={ref}
+        onFocus={(e) => {
+          e.target.select();
+          props.onFocus?.(e);
+        }}
+      />
+    );
+  },
+);
+SelectOnFocusInput.displayName = 'SelectOnFocusInput';
 
 export default function NewOrderPage() {
   const navigate = useNavigate();
 
-  // Customer selection
-  const [customerSearch, setCustomerSearch] = useState('');
+  // Customer selection — searchable combobox, no "recently used" suggestions
+  // (unlike the product/supplier combobox elsewhere in the app).
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
-  const debouncedCustomerSearch = useDebounce(customerSearch, 300);
+  const customerInputRef = useRef<HTMLInputElement>(null);
+  const [quickCreateCustomerOpen, setQuickCreateCustomerOpen] = useState(false);
+  const [quickCreateCustomerInitialName, setQuickCreateCustomerInitialName] = useState('');
+  const [justCreatedCustomers, setJustCreatedCustomers] = useState<Customer[]>([]);
 
   // Product selection
   const [productSearch, setProductSearch] = useState('');
@@ -89,11 +97,20 @@ export default function NewOrderPage() {
   // Editing state — which cart item field is being inline-edited
   const [editingField, setEditingField] = useState<{ index: number; field: 'price' | 'quantity' | 'discount' } | null>(null);
 
-  const { data: customersData, isLoading: isLoadingCustomers } = useCustomers({
-    search: debouncedCustomerSearch || undefined,
-    limit: 20,
-    isActive: true,
-  });
+  // ── Keyboard navigation refs ────────────────────────────────────────────────
+  // Product grid cells, focused via arrow keys; column count is measured from the
+  // actually-rendered DOM so it stays correct across the grid's responsive breakpoints.
+  const productRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const lastFocusedProductIndexRef = useRef(0);
+  // Cart row fields, focused in a chain right after a product is picked:
+  // product -> quantity (selected) -> Enter -> price (selected) -> Enter -> back to grid.
+  const quantityRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const priceRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const pendingFocusQuantityIndexRef = useRef<number | null>(null);
+
+  // Fetched once (not per-keystroke) so the combobox can filter client-side, same
+  // pattern as the product/supplier comboboxes in the purchase-invoice dialog.
+  const { data: customersData } = useCustomers({ limit: 500, isActive: true });
 
   const { data: productsData, isLoading: isLoadingProducts } = useProducts({
     search: debouncedProductSearch || undefined,
@@ -102,8 +119,60 @@ export default function NewOrderPage() {
   });
 
   const createOrderMutation = useCreateOrder();
-  const customers = customersData?.items || [];
+  const fetchedCustomers = customersData?.items || [];
+  const customers = useMemo(() => {
+    const extra = justCreatedCustomers.filter((jc) => !fetchedCustomers.some((c) => c._id === jc._id));
+    return [...fetchedCustomers, ...extra];
+  }, [fetchedCustomers, justCreatedCustomers]);
   const products = productsData?.items || [];
+
+  // Autofocus the customer field on mount, and again whenever the customer is cleared.
+  useEffect(() => {
+    if (!selectedCustomer) {
+      customerInputRef.current?.focus();
+    }
+  }, [selectedCustomer]);
+
+  useEffect(() => {
+    const idx = pendingFocusQuantityIndexRef.current;
+    if (idx !== null) {
+      quantityRefs.current[idx]?.focus();
+      pendingFocusQuantityIndexRef.current = null;
+    }
+  }, [cart]);
+
+  const getProductColumnCount = useCallback(() => {
+    const refs = productRefs.current;
+    const first = refs[0];
+    if (!first) return 1;
+    const firstTop = first.offsetTop;
+    let count = 0;
+    for (const el of refs) {
+      if (!el) break;
+      if (el.offsetTop === firstTop) count++;
+      else break;
+    }
+    return count || 1;
+  }, []);
+
+  const handleCustomerSelect = useCallback((customer: Customer) => {
+    setSelectedCustomer(customer);
+    productRefs.current[0]?.focus();
+  }, []);
+
+  const openQuickCreateCustomer = useCallback((searchText: string) => {
+    setQuickCreateCustomerInitialName(searchText);
+    setQuickCreateCustomerOpen(true);
+  }, []);
+
+  const handleCustomerCreated = useCallback(
+    (customer: Customer) => {
+      setJustCreatedCustomers((prev) => [...prev, customer]);
+      handleCustomerSelect(customer);
+      setQuickCreateCustomerOpen(false);
+    },
+    [handleCustomerSelect],
+  );
 
   const cartTotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.total, 0),
@@ -139,34 +208,44 @@ export default function NewOrderPage() {
     };
   };
 
-  const handleProductClick = useCallback((product: Product) => {
-    setCart((prev) => {
+  const handleProductClick = useCallback(
+    (product: Product) => {
       const baseUnitId = getUnitId(product.baseUnit);
-      const existingIndex = prev.findIndex(
+      const existingIndex = cart.findIndex(
         (item) => item.product._id === product._id && item.unit.id === baseUnitId,
       );
+      // Remember which cart row to jump focus into once the state update below
+      // has actually rendered (consumed by the `cart` effect further up).
+      pendingFocusQuantityIndexRef.current = existingIndex >= 0 ? existingIndex : cart.length;
 
-      if (existingIndex >= 0) {
-        const updated = [...prev];
-        const item = updated[existingIndex];
-        updated[existingIndex] = recalcItem(item, { quantity: item.quantity + 1 });
-        return updated;
-      }
+      setCart((prev) => {
+        const idx = prev.findIndex(
+          (item) => item.product._id === product._id && item.unit.id === baseUnitId,
+        );
 
-      return [
-        ...prev,
-        {
-          product,
-          unit: { id: baseUnitId, name: getUnitName(product.baseUnit) },
-          quantity: 1,
-          originalPrice: product.price,
-          discountPercent: 0,
-          price: product.price,
-          total: product.price,
-        },
-      ];
-    });
-  }, []);
+        if (idx >= 0) {
+          const updated = [...prev];
+          const item = updated[idx];
+          updated[idx] = recalcItem(item, { quantity: item.quantity + 1 });
+          return updated;
+        }
+
+        return [
+          ...prev,
+          {
+            product,
+            unit: { id: baseUnitId, name: getUnitName(product.baseUnit) },
+            quantity: 1,
+            originalPrice: product.price,
+            discountPercent: 0,
+            price: product.price,
+            total: product.price,
+          },
+        ];
+      });
+    },
+    [cart],
+  );
 
   const handleRemoveFromCart = useCallback((index: number) => {
     setCart((prev) => prev.filter((_, i) => i !== index));
@@ -250,16 +329,12 @@ export default function NewOrderPage() {
       customer: selectedCustomer._id,
       items: cart.map((item) => ({
         product: item.product._id,
-        productName: item.product.name,
         unit: item.unit.id,
-        unitName: item.unit.name,
         quantity: item.quantity,
         price: item.originalPrice,
         discountPercent: item.discountPercent,
         discountAmount: item.discountPercent > 0 ? Math.round(item.originalPrice * item.discountPercent / 100) : 0,
-        total: item.total,
       })),
-      totalAmount: cartTotal,
       paidAmount,
       paymentType,
       dueDate: paymentType === 'DEBT' && dueDate ? dueDate : undefined,
@@ -320,55 +395,24 @@ export default function NewOrderPage() {
                 {formatCurrency(selectedCustomer.currentDebt)}
               </span>
               <button
-                onClick={() => { setSelectedCustomer(null); setCustomerSearch(''); setShowCustomerDropdown(false); }}
+                onClick={() => setSelectedCustomer(null)}
                 className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
           ) : (
-            <>
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Mijoz tanlang..."
-                value={customerSearch}
-                onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
-                onFocus={() => setShowCustomerDropdown(true)}
-                onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
-                className="pl-9 h-9"
-              />
-              {showCustomerDropdown && (
-                <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-xl shadow-2xl max-h-[280px] overflow-y-auto">
-                  {isLoadingCustomers ? (
-                    <div className="flex items-center justify-center py-4"><LoadingSpinner size="sm" /></div>
-                  ) : customers.length === 0 ? (
-                    <p className="text-center py-4 text-sm text-muted-foreground">Mijozlar topilmadi</p>
-                  ) : (
-                    customers.map((customer) => (
-                      <div
-                        key={customer._id}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => { setSelectedCustomer(customer); setShowCustomerDropdown(false); setCustomerSearch(''); }}
-                        className="flex items-center justify-between px-3 py-2.5 cursor-pointer hover:bg-accent transition-colors border-b border-border/20 last:border-b-0"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted">
-                            <User className="h-3.5 w-3.5 text-muted-foreground" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium">{customer.name}</p>
-                            {customer.phone && <p className="text-xs text-muted-foreground">{customer.phone}</p>}
-                          </div>
-                        </div>
-                        <Badge variant={customer.currentDebt > 0 ? 'error' : 'success'} className="text-xs">
-                          {formatCurrency(customer.currentDebt)}
-                        </Badge>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </>
+            <SearchCombobox
+              items={customers}
+              recentItems={[]}
+              getId={(c) => c._id}
+              getLabel={(c) => (c.phone ? `${c.name} — ${c.phone}` : c.name)}
+              onSelect={handleCustomerSelect}
+              onCreateNew={openQuickCreateCustomer}
+              createNewLabel={(q) => (q ? `"${q}" nomli yangi mijoz yaratish` : 'Yangi mijoz yaratish')}
+              placeholder="Mijoz tanlang..."
+              inputRef={customerInputRef}
+            />
           )}
         </div>
       </div>
@@ -396,14 +440,28 @@ export default function NewOrderPage() {
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3 p-1 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-                {products.map((product) => {
+                {products.map((product, index) => {
                   const cartItem = cart.find((item) => item.product._id === product._id);
                   return (
                     <button
                       key={product._id}
+                      ref={(el) => { productRefs.current[index] = el; }}
                       onClick={() => handleProductClick(product)}
+                      onFocus={() => { lastFocusedProductIndexRef.current = index; }}
+                      onKeyDown={(e) => {
+                        let nextIndex: number | null = null;
+                        if (e.key === 'ArrowRight') nextIndex = index + 1;
+                        else if (e.key === 'ArrowLeft') nextIndex = index - 1;
+                        else if (e.key === 'ArrowDown') nextIndex = index + getProductColumnCount();
+                        else if (e.key === 'ArrowUp') nextIndex = index - getProductColumnCount();
+                        if (nextIndex !== null) {
+                          e.preventDefault();
+                          nextIndex = Math.max(0, Math.min(products.length - 1, nextIndex));
+                          productRefs.current[nextIndex]?.focus();
+                        }
+                      }}
                       className={cn(
-                        'relative flex flex-col items-center p-3 rounded-xl border cursor-pointer transition-all duration-150 text-center hover:scale-[1.02] active:scale-[0.98]',
+                        'relative flex flex-col items-center p-3 rounded-xl border cursor-pointer transition-all duration-150 text-center hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         cartItem
                           ? 'border-primary/50 bg-primary/5 shadow-sm'
                           : 'border-border/60 hover:bg-accent hover:border-border',
@@ -513,11 +571,18 @@ export default function NewOrderPage() {
                             <Minus className="h-3.5 w-3.5" />
                           </button>
                           <SelectOnFocusInput
+                            ref={(el) => { quantityRefs.current[index] = el; }}
                             type="number"
                             min={0.01}
                             step="any"
                             value={item.quantity}
                             onChange={(e) => handleUpdateQuantity(index, parseFloat(e.target.value) || 0)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                priceRefs.current[index]?.focus();
+                              }
+                            }}
                             className="h-8 w-16 text-center text-sm font-semibold border-0 border-x border-border/80 rounded-none shadow-none focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
                           <button
@@ -532,11 +597,18 @@ export default function NewOrderPage() {
                         <div className="flex items-center gap-1 flex-1 min-w-0">
                           <span className="text-xs text-muted-foreground shrink-0">×</span>
                           <SelectOnFocusInput
+                            ref={(el) => { priceRefs.current[index] = el; }}
                             type="number"
                             min={0}
                             step="any"
                             value={item.originalPrice}
                             onChange={(e) => handleUpdatePrice(index, parseFloat(e.target.value) || 0)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                productRefs.current[lastFocusedProductIndexRef.current]?.focus();
+                              }
+                            }}
                             className="h-8 flex-1 min-w-0 text-sm text-right font-medium shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
                         </div>
@@ -699,6 +771,14 @@ export default function NewOrderPage() {
           </div>
         </div>
       </div>
+
+      {/* Quick Create Customer Dialog */}
+      <QuickCreateCustomerDialog
+        open={quickCreateCustomerOpen}
+        onOpenChange={setQuickCreateCustomerOpen}
+        initialName={quickCreateCustomerInitialName}
+        onCreated={handleCustomerCreated}
+      />
     </div>
   );
 }

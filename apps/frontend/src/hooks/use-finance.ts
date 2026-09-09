@@ -69,6 +69,13 @@ export function useDebtors() {
   });
 }
 
+export function useCreditors() {
+  return useQuery({
+    queryKey: ['creditors'],
+    queryFn: () => financeApi.getCreditors(),
+  });
+}
+
 export function useCashFlow(params: { dateFrom?: string; dateTo?: string }) {
   return useQuery({
     queryKey: ['cashFlow', params],

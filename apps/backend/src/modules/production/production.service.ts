@@ -11,6 +11,9 @@ import { CreateProductionLogDto } from './dto/create-production-log.dto';
 import { QueryProductionLogDto } from './dto/query-production-log.dto';
 import { ProductsService } from '../products/products.service';
 import { ProductLotsService } from '../product-lots/product-lots.service';
+import { RecipesService } from '../recipes/recipes.service';
+import { MaterialsService } from '../materials/materials.service';
+import { MaterialLotsService } from '../material-lots/material-lots.service';
 
 @Injectable()
 export class ProductionService {
@@ -21,7 +24,80 @@ export class ProductionService {
     private readonly stockMovementModel: Model<StockMovementDocument>,
     private readonly productsService: ProductsService,
     private readonly productLotsService: ProductLotsService,
+    private readonly recipesService: RecipesService,
+    private readonly materialsService: MaterialsService,
+    private readonly materialLotsService: MaterialLotsService,
   ) {}
+
+  /**
+   * Determines real materials consumption and cost for a production run:
+   * 1. If the product has an active recipe, consume the needed raw materials FIFO
+   *    according to the recipe (this is the normal, automatic path).
+   * 2. Otherwise, if the caller explicitly listed materialsUsed, consume those FIFO.
+   * 3. Otherwise, no materials are tracked and the cost falls back to the provided
+   *    value or the product's last known cost price (previous behavior).
+   */
+  private async computeProductionCost(
+    productId: string,
+    quantityProduced: number,
+    manualMaterialsUsed: { material: string; quantity: number; unit: string }[] | undefined,
+    manualCostPerUnit: number | undefined,
+    fallbackCostPerUnit: number,
+  ): Promise<{ materialsUsed: any[]; totalMaterialCost: number; costPerUnitProduced: number }> {
+    const recipeResult = await this.recipesService.consumeForProduction(productId, quantityProduced);
+
+    if (recipeResult) {
+      const costPerUnitProduced =
+        manualCostPerUnit !== undefined
+          ? manualCostPerUnit
+          : quantityProduced > 0
+            ? recipeResult.totalMaterialCost / quantityProduced
+            : 0;
+      return {
+        materialsUsed: recipeResult.materialsUsed,
+        totalMaterialCost: recipeResult.totalMaterialCost,
+        costPerUnitProduced,
+      };
+    }
+
+    if (manualMaterialsUsed && manualMaterialsUsed.length > 0) {
+      const materialsUsed: any[] = [];
+      let totalMaterialCost = 0;
+
+      for (const m of manualMaterialsUsed) {
+        const material = await this.materialsService.findById(m.material);
+        const lotConsumptions = await this.materialLotsService.consumeFIFO(m.material, m.quantity);
+        await this.materialsService.updateStock(m.material, -m.quantity);
+        const cost = lotConsumptions.reduce((sum, c) => sum + c.totalCost, 0);
+        totalMaterialCost += cost;
+
+        materialsUsed.push({
+          material: m.material,
+          materialName: material.name,
+          quantity: m.quantity,
+          unit: m.unit,
+          unitName: '',
+          cost,
+          lotsConsumed: lotConsumptions,
+        });
+      }
+
+      const costPerUnitProduced =
+        manualCostPerUnit !== undefined
+          ? manualCostPerUnit
+          : quantityProduced > 0
+            ? totalMaterialCost / quantityProduced
+            : 0;
+
+      return { materialsUsed, totalMaterialCost, costPerUnitProduced };
+    }
+
+    return {
+      materialsUsed: [],
+      totalMaterialCost: 0,
+      costPerUnitProduced: manualCostPerUnit !== undefined ? manualCostPerUnit : fallbackCostPerUnit,
+    };
+  }
 
   async createLog(
     dto: CreateProductionLogDto,
@@ -30,12 +106,25 @@ export class ProductionService {
     const product = await this.productsService.findById(dto.product);
     const status = dto.status || 'APPROVED';
 
-    const materialsUsed: any[] = [];
-    const totalMaterialCost = 0;
-    const costPerUnitProduced =
-      dto.costPerUnitProduced !== undefined
-        ? dto.costPerUnitProduced
-        : product.costPrice || product.costPerUnit || 0;
+    const fallbackCostPerUnit = product.costPrice || product.costPerUnit || 0;
+    let materialsUsed: any[] = [];
+    let totalMaterialCost = 0;
+    let costPerUnitProduced = dto.costPerUnitProduced !== undefined ? dto.costPerUnitProduced : fallbackCostPerUnit;
+
+    // Only consume real raw materials when the log is being saved as APPROVED —
+    // a PENDING log shouldn't touch stock until it's approved.
+    if (status === 'APPROVED') {
+      const computed = await this.computeProductionCost(
+        dto.product,
+        dto.quantityProduced,
+        dto.materialsUsed as any,
+        dto.costPerUnitProduced,
+        fallbackCostPerUnit,
+      );
+      materialsUsed = computed.materialsUsed;
+      totalMaterialCost = computed.totalMaterialCost;
+      costPerUnitProduced = computed.costPerUnitProduced;
+    }
 
     // Calculate earnedAmount
     const earnedAmount = dto.quantityProduced * product.price;
@@ -118,6 +207,19 @@ export class ProductionService {
     const productUnitId = typeof product.baseUnit === 'string'
       ? product.baseUnit
       : (product.baseUnit as any)._id?.toString() || product.baseUnit;
+
+    // Consume real raw materials now that the log is actually being approved
+    const fallbackCostPerUnit = product.costPrice || product.costPerUnit || 0;
+    const computed = await this.computeProductionCost(
+      log.product.toString(),
+      log.quantityProduced,
+      undefined,
+      undefined,
+      log.costPerUnitProduced || fallbackCostPerUnit,
+    );
+    log.materialsUsed = computed.materialsUsed;
+    log.totalMaterialCost = computed.totalMaterialCost;
+    log.costPerUnitProduced = computed.costPerUnitProduced;
 
     // Increment product stock
     await this.productsService.updateStock(log.product.toString(), log.quantityProduced);

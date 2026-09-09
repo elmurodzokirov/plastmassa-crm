@@ -6,6 +6,13 @@ import { ProductionLog, ProductionLogDocument } from '../production/schemas/prod
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { Attendance, AttendanceDocument } from '../attendance/schemas/attendance.schema';
 import { User, UserDocument } from '../users/schemas/user.schema';
+import { Supplier, SupplierDocument } from '../suppliers/schemas/supplier.schema';
+import {
+  SupplierPayment,
+  SupplierPaymentDocument,
+} from '../suppliers/schemas/supplier-payment.schema';
+import { MaterialLot, MaterialLotDocument } from '../material-lots/schemas/material-lot.schema';
+import { NotFoundException } from '@nestjs/common';
 
 @Injectable()
 export class ReportsService {
@@ -20,6 +27,12 @@ export class ReportsService {
     private readonly attendanceModel: Model<AttendanceDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
+    @InjectModel(Supplier.name)
+    private readonly supplierModel: Model<SupplierDocument>,
+    @InjectModel(SupplierPayment.name)
+    private readonly supplierPaymentModel: Model<SupplierPaymentDocument>,
+    @InjectModel(MaterialLot.name)
+    private readonly materialLotModel: Model<MaterialLotDocument>,
   ) {}
 
   async getSalesReport(dateFrom?: string, dateTo?: string, groupBy: 'day' | 'week' | 'month' = 'month') {
@@ -368,6 +381,99 @@ export class ReportsService {
         totalLate,
         averageAttendance,
       },
+    };
+  }
+
+  async getSupplierReconciliation(
+    supplierId: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ) {
+    const supplier = await this.supplierModel.findById(supplierId).exec();
+    if (!supplier) {
+      throw new NotFoundException(`Supplier with ID "${supplierId}" not found`);
+    }
+
+    const from = dateFrom ? new Date(dateFrom) : null;
+    const to = dateTo ? new Date(dateTo) : null;
+    if (to) to.setHours(23, 59, 59, 999);
+
+    const [lots, payments] = await Promise.all([
+      this.materialLotModel
+        .find({ supplier: supplierId, source: 'PURCHASE' })
+        .populate('material', 'name')
+        .sort({ createdAt: 1 })
+        .exec(),
+      this.supplierPaymentModel
+        .find({ supplier: supplierId })
+        .sort({ createdAt: 1 })
+        .exec(),
+    ]);
+
+    type LedgerEvent = {
+      date: Date;
+      type: 'DEBT' | 'PAYMENT';
+      description: string;
+      reference: string;
+      debit: number;
+      credit: number;
+    };
+
+    const events: LedgerEvent[] = [
+      ...lots.map((lot: any) => ({
+        date: lot.createdAt,
+        type: 'DEBT' as const,
+        description: `Xom-ashyo kirimi: ${lot.material?.name || ''} (${lot.lotNumber})`,
+        reference: lot.lotNumber,
+        debit: lot.totalCost,
+        credit: 0,
+      })),
+      ...payments.map((payment: any) => ({
+        date: payment.createdAt,
+        type: 'PAYMENT' as const,
+        description: `To'lov (${payment.type})${payment.notes ? ' - ' + payment.notes : ''}`,
+        reference: payment._id.toString(),
+        debit: 0,
+        credit: payment.amount,
+      })),
+    ].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    let openingBalance = 0;
+    for (const event of events) {
+      if (from && event.date < from) {
+        openingBalance += event.debit - event.credit;
+      }
+    }
+
+    let runningBalance = openingBalance;
+    const entries = [];
+    for (const event of events) {
+      if (from && event.date < from) continue;
+      if (to && event.date > to) continue;
+
+      runningBalance += event.debit - event.credit;
+      entries.push({
+        date: event.date,
+        type: event.type,
+        description: event.description,
+        reference: event.reference,
+        debit: event.debit,
+        credit: event.credit,
+        balance: runningBalance,
+      });
+    }
+
+    return {
+      supplier: {
+        _id: supplier._id,
+        name: supplier.name,
+        phone: supplier.phone,
+      },
+      openingBalance,
+      closingBalance: runningBalance,
+      currentDebt: supplier.currentDebt,
+      entries,
+      period: { from: dateFrom, to: dateTo },
     };
   }
 }

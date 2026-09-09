@@ -6,6 +6,9 @@ import { ProductionLog, ProductionLogSchema } from './schemas/production-log.sch
 import { StockMovement, StockMovementSchema } from '../stock/schemas/stock-movement.schema';
 import { ProductsModule } from '../products/products.module';
 import { ProductLotsModule } from '../product-lots/product-lots.module';
+import { RecipesModule } from '../recipes/recipes.module';
+import { MaterialsModule } from '../materials/materials.module';
+import { MaterialLotsModule } from '../material-lots/material-lots.module';
 
 @Module({
   imports: [
@@ -15,6 +18,9 @@ import { ProductLotsModule } from '../product-lots/product-lots.module';
     ]),
     ProductsModule,
     ProductLotsModule,
+    RecipesModule,
+    MaterialsModule,
+    MaterialLotsModule,
   ],
   controllers: [ProductionController],
   providers: [ProductionService],

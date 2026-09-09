@@ -14,6 +14,9 @@ import {
   UserCheck,
   Clock,
   Calculator,
+  Truck,
+  ArrowDownCircle,
+  ArrowUpCircle,
 } from 'lucide-react';
 import { cn, formatCurrency, formatNumber } from '@/lib/utils';
 import {
@@ -21,7 +24,9 @@ import {
   useProductionReport,
   useStockReport,
   useAttendanceReport,
+  useSupplierReconciliation,
 } from '@/hooks/use-reports';
+import { useSuppliers } from '@/hooks/use-suppliers';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -97,6 +102,11 @@ export default function ReportsPage() {
   const [attYear, setAttYear] = useState(now.getFullYear());
   const [attMonth, setAttMonth] = useState(now.getMonth() + 1);
 
+  // ── Supplier reconciliation tab state ───────────────────────────────
+  const [reconSupplier, setReconSupplier] = useState('');
+  const [reconDateFrom, setReconDateFrom] = useState('');
+  const [reconDateTo, setReconDateTo] = useState('');
+
   // ── Queries ────────────────────────────────────────────────────────
 
   const salesParams = useMemo(
@@ -115,6 +125,18 @@ export default function ReportsPage() {
 
   const attParams = useMemo(() => ({ year: attYear, month: attMonth }), [attYear, attMonth]);
   const { data: attData, isLoading: attLoading } = useAttendanceReport(attParams);
+
+  const { data: suppliersData } = useSuppliers({ limit: 200, isActive: true });
+  const suppliers = suppliersData?.items || [];
+  const reconParams = useMemo(
+    () => ({
+      supplier: reconSupplier,
+      ...(reconDateFrom && { dateFrom: reconDateFrom }),
+      ...(reconDateTo && { dateTo: reconDateTo }),
+    }),
+    [reconSupplier, reconDateFrom, reconDateTo],
+  );
+  const { data: reconData, isLoading: reconLoading } = useSupplierReconciliation(reconParams);
 
   // ── Derived data ───────────────────────────────────────────────────
 
@@ -173,6 +195,7 @@ export default function ReportsPage() {
             <TabsTrigger value="production">Ishlab chiqarish</TabsTrigger>
             <TabsTrigger value="stock">Ombor</TabsTrigger>
             <TabsTrigger value="attendance">Davomat</TabsTrigger>
+            <TabsTrigger value="supplier-recon">Yetkazib beruvchilar</TabsTrigger>
           </TabsList>
         </motion.div>
 
@@ -798,6 +821,161 @@ export default function ReportsPage() {
               </DataTableWrapper>
             </>
           )}
+        </TabsContent>
+
+        {/* ── TAB 5: Supplier Reconciliation (Akt-sverka) ──────────────── */}
+        <TabsContent value="supplier-recon" className="space-y-6">
+          {/* Filters */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            className="flex flex-col sm:flex-row items-start sm:items-end gap-3"
+          >
+            <div className="space-y-1.5 min-w-[220px]">
+              <Label className="text-xs text-muted-foreground">Yetkazib beruvchi</Label>
+              <Select value={reconSupplier} onValueChange={setReconSupplier}>
+                <SelectTrigger className="h-9 rounded-xl text-xs">
+                  <SelectValue placeholder="Yetkazib beruvchini tanlang" />
+                </SelectTrigger>
+                <SelectContent>
+                  {suppliers.map((s) => (
+                    <SelectItem key={s._id} value={s._id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Boshlanish sana</Label>
+              <Input
+                type="date"
+                value={reconDateFrom}
+                onChange={(e) => setReconDateFrom(e.target.value)}
+                className="h-9 rounded-xl text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Tugash sana</Label>
+              <Input
+                type="date"
+                value={reconDateTo}
+                onChange={(e) => setReconDateTo(e.target.value)}
+                className="h-9 rounded-xl text-xs"
+              />
+            </div>
+          </motion.div>
+
+          {!reconSupplier ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-4">
+                <Truck className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-medium text-foreground">
+                Yetkazib beruvchini tanlang
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground max-w-sm">
+                Akt-sverka hisobotini ko'rish uchun yuqoridan yetkazib beruvchini tanlang
+              </p>
+            </div>
+          ) : reconLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <LoadingSpinner size="lg" />
+            </div>
+          ) : reconData ? (
+            <>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <StatCard
+                  title="Davr boshidagi qoldiq"
+                  value={formatCurrency(reconData.openingBalance || 0)}
+                  icon={ArrowDownCircle}
+                  iconColor="text-amber-400"
+                  iconBg="bg-amber-500/20"
+                  index={0}
+                />
+                <StatCard
+                  title="Davr oxiridagi qoldiq"
+                  value={formatCurrency(reconData.closingBalance || 0)}
+                  icon={ArrowUpCircle}
+                  iconColor="text-red-400"
+                  iconBg="bg-red-500/20"
+                  index={1}
+                />
+                <StatCard
+                  title="Joriy qarz"
+                  value={formatCurrency(reconData.currentDebt || 0)}
+                  icon={DollarSign}
+                  iconColor="text-indigo-400"
+                  iconBg="bg-indigo-500/20"
+                  index={2}
+                />
+              </div>
+
+              {/* Ledger Table */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+              >
+                <h3 className="text-base font-semibold text-foreground mb-3">
+                  {reconData.supplier?.name} bilan hisob-kitob
+                </h3>
+                <DataTableWrapper
+                  isEmpty={reconData.entries.length === 0}
+                  emptyTitle="Ma'lumot topilmadi"
+                  emptyDescription="Bu davr uchun operatsiyalar mavjud emas"
+                >
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-b border-border/50 hover:bg-transparent">
+                          <TableHead className="min-w-[120px]">Sana</TableHead>
+                          <TableHead className="min-w-[220px]">Tavsif</TableHead>
+                          <TableHead className="min-w-[130px]">Qarz (+)</TableHead>
+                          <TableHead className="min-w-[130px]">To'lov (-)</TableHead>
+                          <TableHead className="min-w-[140px]">Qoldiq</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        <TableRow className="border-b border-border/30 bg-muted/20">
+                          <TableCell colSpan={4} className="font-medium text-muted-foreground">
+                            Davr boshidagi qoldiq
+                          </TableCell>
+                          <TableCell className="font-semibold text-foreground">
+                            {formatCurrency(reconData.openingBalance || 0)}
+                          </TableCell>
+                        </TableRow>
+                        {reconData.entries.map((entry, idx) => (
+                          <TableRow
+                            key={idx}
+                            className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                          >
+                            <TableCell className="text-muted-foreground">
+                              {entry.date ? format(new Date(entry.date), 'dd.MM.yyyy') : '---'}
+                            </TableCell>
+                            <TableCell className="font-medium text-foreground">
+                              {entry.description}
+                            </TableCell>
+                            <TableCell className="font-semibold text-red-400">
+                              {entry.debit > 0 ? formatCurrency(entry.debit) : '-'}
+                            </TableCell>
+                            <TableCell className="font-semibold text-green-400">
+                              {entry.credit > 0 ? formatCurrency(entry.credit) : '-'}
+                            </TableCell>
+                            <TableCell className="font-semibold text-foreground">
+                              {formatCurrency(entry.balance)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </DataTableWrapper>
+              </motion.div>
+            </>
+          ) : null}
         </TabsContent>
       </Tabs>
     </div>

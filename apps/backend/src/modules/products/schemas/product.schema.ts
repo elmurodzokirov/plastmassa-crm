@@ -25,6 +25,12 @@ export class Product {
   @Prop()
   imageUrl?: string;
 
+  @Prop({ trim: true })
+  category?: string;
+
+  @Prop({ default: 0 })
+  minStock: number;
+
   @Prop({ type: Types.ObjectId, ref: 'Unit', required: true })
   baseUnit: Types.ObjectId;
 

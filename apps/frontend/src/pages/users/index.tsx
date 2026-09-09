@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import {
   Table,
   TableBody,
@@ -100,6 +101,7 @@ export default function UsersPage() {
   const [roleId, setRoleId] = useState('');
   const [salaryType, setSalaryType] = useState('FIXED');
   const [baseSalaryInput, setBaseSalaryInput] = useState(0);
+  const [showInAttendance, setShowInAttendance] = useState(true);
 
   const users = usersData?.items || [];
   const payrolls = payrollsData?.items || [];
@@ -139,6 +141,7 @@ export default function UsersPage() {
     setRoleId('');
     setSalaryType('FIXED');
     setBaseSalaryInput(0);
+    setShowInAttendance(true);
   };
 
   const openCreate = () => {
@@ -171,6 +174,7 @@ export default function UsersPage() {
     setRoleId(rId);
     setSalaryType(user.salaryType || 'FIXED');
     setBaseSalaryInput(user.baseSalary || 0);
+    setShowInAttendance(user.showInAttendance !== false);
     setDialogOpen(true);
   };
 
@@ -189,7 +193,7 @@ export default function UsersPage() {
 
     try {
       if (editingUser) {
-        const data: any = { fullName, phone, role: roleId, salaryType, baseSalary: baseSalaryInput };
+        const data: any = { fullName, phone, role: roleId, salaryType, baseSalary: baseSalaryInput, showInAttendance };
         const trimmedUsername = username.trim();
         if (trimmedUsername && trimmedUsername !== editingUser.username) {
           data.username = trimmedUsername;
@@ -497,6 +501,20 @@ export default function UsersPage() {
                   className="rounded-xl"
                 />
                 <p className="text-[10px] text-muted-foreground">Oylik hisoblashda avtomatik ishlatiladi</p>
+              </div>
+            )}
+
+            {editingUser && (
+              <div className="flex items-center justify-between rounded-xl border border-border/50 px-3 py-2.5">
+                <div className="space-y-0.5 pr-3">
+                  <Label className="cursor-pointer" onClick={() => setShowInAttendance((v) => !v)}>
+                    Davomatda ko'rinsin
+                  </Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    O'chirilsa, xodim Davomat oynasida ko'rinmaydi va oyligi to'liq hisoblanadi
+                  </p>
+                </div>
+                <Switch checked={showInAttendance} onCheckedChange={setShowInAttendance} />
               </div>
             )}
           </div>

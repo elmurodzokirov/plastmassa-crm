@@ -4,6 +4,7 @@ import {
   SalesReportParams,
   ProductionReportParams,
   AttendanceReportParams,
+  SupplierReconciliationParams,
 } from '@/api/reports';
 
 export function useSalesReport(params?: SalesReportParams) {
@@ -34,5 +35,13 @@ export function useAttendanceReport(params: AttendanceReportParams) {
     queryKey: ['attendanceReport', params],
     queryFn: () => reportsApi.getAttendanceReport(params),
     enabled: !!params.year && !!params.month,
+  });
+}
+
+export function useSupplierReconciliation(params: SupplierReconciliationParams) {
+  return useQuery({
+    queryKey: ['supplierReconciliation', params],
+    queryFn: () => reportsApi.getSupplierReconciliation(params),
+    enabled: !!params.supplier,
   });
 }

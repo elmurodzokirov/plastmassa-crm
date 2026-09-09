@@ -1,11 +1,13 @@
 import client from './client';
-import type { Product, PaginatedResponse } from '@plastmassa/shared';
+import type { Product, PaginatedResponse, ProductStats } from '@plastmassa/shared';
 
 export interface ProductQuery {
   page?: number;
   limit?: number;
   search?: string;
   isActive?: boolean;
+  category?: string;
+  lowStock?: boolean;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
 }
@@ -22,6 +24,8 @@ export interface ProductUpsertInput {
   price: number;
   costPrice?: number;
   pieceRate?: number;
+  category?: string;
+  minStock?: number;
   salesUnits?: ProductSalesUnitInput[];
   image?: File | null;
   removeImage?: boolean;
@@ -34,6 +38,10 @@ function buildProductFormData(data: ProductUpsertInput) {
   formData.append('price', String(data.price));
   formData.append('costPrice', String(data.costPrice ?? 0));
   formData.append('pieceRate', String(data.pieceRate ?? 0));
+  formData.append('minStock', String(data.minStock ?? 0));
+  if (data.category) {
+    formData.append('category', data.category);
+  }
   formData.append('salesUnits', JSON.stringify(data.salesUnits ?? []));
 
   if (data.image) {
@@ -52,6 +60,10 @@ export const productsApi = {
     client.get<PaginatedResponse<Product>>('/products', { params }).then((r) => r.data),
   getById: (id: string) =>
     client.get<Product>(`/products/${id}`).then((r) => r.data),
+  getStats: () =>
+    client.get<ProductStats>('/products/stats').then((r) => r.data),
+  getCategories: () =>
+    client.get<string[]>('/products/categories').then((r) => r.data),
   create: (data: ProductUpsertInput) =>
     client.post<Product>('/products', buildProductFormData(data), {
       headers: {

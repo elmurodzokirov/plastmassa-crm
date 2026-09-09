@@ -17,6 +17,20 @@ export function useProduct(id: string) {
   });
 }
 
+export function useProductStats() {
+  return useQuery({
+    queryKey: ['products', 'stats'],
+    queryFn: () => productsApi.getStats(),
+  });
+}
+
+export function useProductCategories() {
+  return useQuery({
+    queryKey: ['products', 'categories'],
+    queryFn: () => productsApi.getCategories(),
+  });
+}
+
 export function useCreateProduct() {
   const queryClient = useQueryClient();
   return useMutation({

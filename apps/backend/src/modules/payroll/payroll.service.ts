@@ -312,36 +312,49 @@ export class PayrollService {
 
     if (salaryType === 'FIXED') {
       baseSalary = dto.baseSalary ?? 0;
+      const hiddenFromAttendance = (user as any).showInAttendance === false;
 
-      const attendanceReport = await this.attendanceService.getMonthlyReport(
-        dto.user,
-        dto.year,
-        dto.month,
-      );
-
-      const { summary } = attendanceReport;
-      if (summary.totalDays === 0) {
-        throw new BadRequestException(
-          'Bu xodim uchun tanlangan oy bo‘yicha davomat kiritilmagan. Oylikni hisoblashdan oldin davomatni saqlang.',
+      if (hiddenFromAttendance) {
+        // Xodim davomat oynasida ko'rinmaydi — oylik davomatga bog'liq bo'lmasdan to'liq hisoblanadi
+        presentDays = workingDays;
+        absentDays = 0;
+        lateDays = 0;
+        totalHoursWorked = workingDays * 8;
+        overtimeHours = 0;
+        overtimeAmount = 0;
+        totalEarned = baseSalary + bonus;
+        productionEarnings = 0;
+      } else {
+        const attendanceReport = await this.attendanceService.getMonthlyReport(
+          dto.user,
+          dto.year,
+          dto.month,
         );
+
+        const { summary } = attendanceReport;
+        if (summary.totalDays === 0) {
+          throw new BadRequestException(
+            'Bu xodim uchun tanlangan oy bo‘yicha davomat kiritilmagan. Oylikni hisoblashdan oldin davomatni saqlang.',
+          );
+        }
+        presentDays = summary.presentDays;
+        absentDays = summary.absentDays;
+        lateDays = summary.lateDays;
+        totalHoursWorked = summary.totalHoursWorked;
+        overtimeHours = summary.totalOvertimeHours;
+
+        const dailyRate = baseSalary / workingDays;
+        const earnedSalary =
+          dailyRate * presentDays +
+          dailyRate * 0.5 * lateDays +
+          dailyRate * 0.5 * (summary.halfDays || 0);
+
+        const overtimeRate = (dailyRate / 8) * 1.5;
+        overtimeAmount = Math.round(overtimeHours * overtimeRate);
+
+        totalEarned = earnedSalary + overtimeAmount + bonus;
+        productionEarnings = 0;
       }
-      presentDays = summary.presentDays;
-      absentDays = summary.absentDays;
-      lateDays = summary.lateDays;
-      totalHoursWorked = summary.totalHoursWorked;
-      overtimeHours = summary.totalOvertimeHours;
-
-      const dailyRate = baseSalary / workingDays;
-      const earnedSalary =
-        dailyRate * presentDays +
-        dailyRate * 0.5 * lateDays +
-        dailyRate * 0.5 * (summary.halfDays || 0);
-
-      const overtimeRate = (dailyRate / 8) * 1.5;
-      overtimeAmount = Math.round(overtimeHours * overtimeRate);
-
-      totalEarned = earnedSalary + overtimeAmount + bonus;
-      productionEarnings = 0;
     } else {
       // PIECE_RATE
       productionEarnings = await this.getProductionEarnings(

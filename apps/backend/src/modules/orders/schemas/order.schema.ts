@@ -76,6 +76,22 @@ export class OrderItem {
 
 export const OrderItemSchema = SchemaFactory.createForClass(OrderItem);
 
+@Schema({ _id: false })
+export class OrderStatusHistoryEntry {
+  @Prop({ required: true, enum: ['PENDING', 'CONFIRMED', 'CANCELLED'] })
+  status: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  changedBy: Types.ObjectId;
+
+  @Prop({ type: Date, required: true, default: Date.now })
+  changedAt: Date;
+}
+
+export const OrderStatusHistoryEntrySchema = SchemaFactory.createForClass(
+  OrderStatusHistoryEntry,
+);
+
 @Schema({ timestamps: true })
 export class Order {
   @Prop({ required: true, unique: true })
@@ -129,6 +145,12 @@ export class Order {
 
   @Prop({ trim: true })
   notes: string;
+
+  // Who changed the order to which status and when — appended to on every status
+  // transition (including the initial PENDING at creation) so the full history stays
+  // visible on the order document itself, not just the current status.
+  @Prop({ type: [OrderStatusHistoryEntrySchema], default: [] })
+  statusHistory: OrderStatusHistoryEntry[];
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   createdBy: Types.ObjectId;

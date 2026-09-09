@@ -5,6 +5,7 @@ import { ProductLotsController } from './product-lots.controller';
 import { ProductLot, ProductLotSchema } from './schemas/product-lot.schema';
 import { ProductsModule } from '../products/products.module';
 import { UnitsModule } from '../units/units.module';
+import { SuppliersModule } from '../suppliers/suppliers.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { UnitsModule } from '../units/units.module';
     ]),
     ProductsModule,
     UnitsModule,
+    SuppliersModule,
   ],
   controllers: [ProductLotsController],
   providers: [ProductLotsService],

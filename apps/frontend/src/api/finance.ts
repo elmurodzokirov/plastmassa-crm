@@ -41,6 +41,13 @@ export interface DebtorData {
   creditLimit: number;
 }
 
+export interface CreditorData {
+  _id: string;
+  name: string;
+  phone?: string;
+  totalDebt: number;
+}
+
 export interface CashFlowData {
   totalIncome: number;
   totalExpense: number;
@@ -60,6 +67,7 @@ export interface FinanceSummary {
   totalExpenses: number;
   netProfit: number;
   totalDebt: number;
+  totalCredit: number;
   cashOnHand: number;
 }
 
@@ -92,6 +100,8 @@ export const financeApi = {
   // Finance
   getDebtors: () =>
     client.get<DebtorData[]>('/finance/debtors').then((r) => r.data),
+  getCreditors: () =>
+    client.get<CreditorData[]>('/finance/creditors').then((r) => r.data),
   getCashFlow: (params: { dateFrom?: string; dateTo?: string }) =>
     client.get<CashFlowData>('/finance/cash-flow', { params }).then((r) => r.data),
   getMonthlyCashFlow: (year: number) =>

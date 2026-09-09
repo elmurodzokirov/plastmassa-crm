@@ -19,6 +19,9 @@ import {
   Warehouse,
   Plus,
   RotateCcw,
+  Boxes,
+  Calculator,
+  Truck,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -69,7 +72,11 @@ const navigation: NavigationEntry[] = [
     icon: Warehouse,
     name: 'Ombor',
     children: [
+      { icon: Calculator, name: 'Kalkulyatsiya', path: '/calculations', permission: 'products:read' },
       { icon: Package, name: 'Mahsulotlar', path: '/products', actionPath: '/products/lots', actionLabel: 'Kirim', permission: 'products:read' },
+      { icon: Boxes, name: 'Xom-ashyo', path: '/materials', permission: 'products:read' },
+      { icon: Truck, name: 'Yetkazib beruvchilar', path: '/suppliers', permission: 'products:read' },
+      { icon: Warehouse, name: 'Ombor harakatlari', path: '/stock/movements', permission: 'stock:read' },
       { icon: Factory, name: 'Ishlab chiqarish', path: '/production', permission: 'production:read' },
     ],
   },

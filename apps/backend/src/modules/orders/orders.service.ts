@@ -125,6 +125,9 @@ export class OrdersService {
         notes,
         ...(dueDate && { dueDate: new Date(dueDate) }),
         createdBy: userId,
+        statusHistory: [
+          { status: 'PENDING', changedBy: userId, changedAt: new Date() },
+        ],
       });
 
       const savedOrder = await order.save();
@@ -386,6 +389,7 @@ export class OrdersService {
       .populate('items.unit')
       .populate('items.baseUnit')
       .populate('createdBy', 'fullName username')
+      .populate('statusHistory.changedBy', 'fullName username')
       .exec();
 
     if (!order) {
@@ -435,6 +439,11 @@ export class OrdersService {
         }
 
         order.status = 'CANCELLED';
+        order.statusHistory.push({
+          status: 'CANCELLED',
+          changedBy: userId as any,
+          changedAt: new Date(),
+        } as any);
         await order.save();
       } catch (error) {
         await this.reapplyReleasedItems(order.items as any[]);
@@ -458,6 +467,12 @@ export class OrdersService {
       );
     } else {
       order.status = updateOrderStatusDto.status;
+      order.statusHistory.push({
+        status: updateOrderStatusDto.status,
+        changedBy: userId as any,
+        changedAt: new Date(),
+      } as any);
+      await order.save();
     }
 
     if (

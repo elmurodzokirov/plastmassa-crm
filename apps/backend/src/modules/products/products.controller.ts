@@ -30,6 +30,16 @@ export class ProductsController {
     return this.productsService.findAll(query);
   }
 
+  @Get('stats')
+  async getStats() {
+    return this.productsService.getStats();
+  }
+
+  @Get('categories')
+  async getCategories() {
+    return this.productsService.getCategories();
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.productsService.findById(id);

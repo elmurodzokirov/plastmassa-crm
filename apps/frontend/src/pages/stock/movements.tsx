@@ -10,15 +10,18 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar,
+  Download,
+  ClipboardList,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Product, Unit, User, StockMovementType } from '@plastmassa/shared';
-import { cn } from '@/lib/utils';
+import { cn, exportToCsv, formatNumber } from '@/lib/utils';
 import { useStockMovements, useCreateStockMovement } from '@/hooks/use-stock';
 import { useProducts } from '@/hooks/use-products';
 import { useUnits } from '@/hooks/use-units';
 import { StockMovementQuery } from '@/api/stock';
 import { toast } from '@/components/ui/use-toast';
+import { StockTakeDialog } from './stock-take-dialog';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,10 +62,37 @@ const movementSchema = z.object({
   product: z.string().min(1, 'Mahsulotni tanlang'),
   quantity: z.coerce.number().min(0.001, 'Miqdor 0 dan katta bo\'lishi kerak'),
   unit: z.string().min(1, 'Birlikni tanlang'),
-  reason: z.string().min(1, 'Sababni kiriting'),
-});
+  reasonPreset: z.string().min(1, 'Sababni tanlang'),
+  reasonDetail: z.string().optional(),
+}).refine(
+  (data) => data.reasonPreset !== '__other__' || !!data.reasonDetail?.trim(),
+  { message: 'Sababni kiriting', path: ['reasonDetail'] },
+);
 
 type MovementFormData = z.infer<typeof movementSchema>;
+
+const OTHER_REASON = '__other__';
+
+const REASON_PRESETS: Record<StockMovementType, { value: string; label: string }[]> = {
+  IN: [
+    { value: 'Xarid', label: 'Xarid' },
+    { value: 'Qaytarish', label: 'Mijozdan qaytarish' },
+    { value: 'Omborlararo ko\'chirish', label: 'Omborlararo ko\'chirish' },
+    { value: OTHER_REASON, label: 'Boshqa' },
+  ],
+  OUT: [
+    { value: 'Sotuv', label: 'Sotuv' },
+    { value: 'Brak', label: 'Brak/yaroqsiz' },
+    { value: 'Omborlararo ko\'chirish', label: 'Omborlararo ko\'chirish' },
+    { value: 'Ichki ehtiyoj', label: 'Ichki ehtiyoj uchun sarf' },
+    { value: OTHER_REASON, label: 'Boshqa' },
+  ],
+  ADJUSTMENT: [
+    { value: 'Inventarizatsiya natijasida tuzatish', label: 'Inventarizatsiya natijasida tuzatish' },
+    { value: 'Hisoblash xatosi', label: 'Hisoblash xatosini tuzatish' },
+    { value: OTHER_REASON, label: 'Boshqa' },
+  ],
+};
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -128,6 +158,7 @@ export default function StockMovementsPage() {
   const limit = 10;
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [stockTakeOpen, setStockTakeOpen] = useState(false);
 
   const queryParams: StockMovementQuery = {
     page,
@@ -160,11 +191,14 @@ export default function StockMovementsPage() {
       product: '',
       quantity: 0,
       unit: '',
-      reason: '',
+      reasonPreset: '',
+      reasonDetail: '',
     },
   });
 
   const watchProduct = watch('product');
+  const watchType = watch('type');
+  const watchReasonPreset = watch('reasonPreset');
 
   const products = productsData?.items || [];
   const movements = movementsData?.items || [];
@@ -184,6 +218,12 @@ export default function StockMovementsPage() {
       }
     }
   }, [watchProduct, products, setValue]);
+
+  // Reset reason preset when movement type changes (presets differ per type)
+  useEffect(() => {
+    setValue('reasonPreset', '');
+    setValue('reasonDetail', '');
+  }, [watchType, setValue]);
 
   const getItemName = (movement: any): string => {
     if (movement.product) {
@@ -217,7 +257,8 @@ export default function StockMovementsPage() {
       product: '',
       quantity: 0,
       unit: '',
-      reason: '',
+      reasonPreset: '',
+      reasonDetail: '',
     });
     setDialogOpen(true);
   }, [reset]);
@@ -225,12 +266,19 @@ export default function StockMovementsPage() {
   const onSubmit = useCallback(
     async (data: MovementFormData) => {
       try {
+        const reason =
+          data.reasonPreset === OTHER_REASON
+            ? data.reasonDetail!.trim()
+            : data.reasonDetail?.trim()
+              ? `${data.reasonPreset} — ${data.reasonDetail.trim()}`
+              : data.reasonPreset;
+
         const payload: any = {
           type: data.type,
           product: data.product,
           quantity: data.quantity,
           unit: data.unit,
-          reason: data.reason,
+          reason,
         };
 
         await createMutation.mutateAsync(payload);
@@ -251,6 +299,22 @@ export default function StockMovementsPage() {
     [createMutation, reset],
   );
 
+  const handleExportCsv = useCallback(() => {
+    exportToCsv(
+      `ombor-harakatlari-${new Date().toISOString().slice(0, 10)}.csv`,
+      ['Sana', 'Turi', 'Mahsulot', 'Miqdor', 'Birlik', 'Sabab', 'Kim tomonidan'],
+      movements.map((m) => [
+        formatDate(m.createdAt),
+        m.type,
+        getItemName(m),
+        m.quantity,
+        getUnitSymbol(m),
+        m.reason,
+        getCreatedByName(m),
+      ]),
+    );
+  }, [movements]);
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -261,10 +325,20 @@ export default function StockMovementsPage() {
             Jami {totalCount} ta harakat
           </p>
         </div>
-        <Button onClick={openCreateDialog} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Yangi harakat
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={handleExportCsv} className="gap-2">
+            <Download className="h-4 w-4" />
+            Eksport
+          </Button>
+          <Button variant="outline" onClick={() => setStockTakeOpen(true)} className="gap-2">
+            <ClipboardList className="h-4 w-4" />
+            Inventarizatsiya
+          </Button>
+          <Button onClick={openCreateDialog} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Yangi harakat
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -553,19 +627,52 @@ export default function StockMovementsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="reason">
+              <Label>
                 Sabab <span className="text-destructive">*</span>
               </Label>
-              <Textarea
-                id="reason"
-                placeholder="Harakat sababi..."
-                rows={3}
-                {...register('reason')}
+              <Controller
+                name="reasonPreset"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sababni tanlang" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {REASON_PRESETS[watchType]?.map((preset) => (
+                        <SelectItem key={preset.value} value={preset.value}>
+                          {preset.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               />
-              {errors.reason && (
-                <p className="text-xs text-destructive">{errors.reason.message}</p>
+              {errors.reasonPreset && (
+                <p className="text-xs text-destructive">{errors.reasonPreset.message}</p>
               )}
             </div>
+
+            {(watchReasonPreset === OTHER_REASON || !!watchReasonPreset) && (
+              <div className="space-y-2">
+                <Label htmlFor="reasonDetail">
+                  {watchReasonPreset === OTHER_REASON ? (
+                    <>Sabab tafsiloti <span className="text-destructive">*</span></>
+                  ) : (
+                    'Qo\'shimcha izoh (ixtiyoriy)'
+                  )}
+                </Label>
+                <Textarea
+                  id="reasonDetail"
+                  placeholder="Batafsil izoh..."
+                  rows={2}
+                  {...register('reasonDetail')}
+                />
+                {errors.reasonDetail && (
+                  <p className="text-xs text-destructive">{errors.reasonDetail.message}</p>
+                )}
+              </div>
+            )}
 
             <DialogFooter className="gap-2 sm:gap-0">
               <Button
@@ -585,6 +692,13 @@ export default function StockMovementsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Stock Take (Inventarizatsiya) Dialog */}
+      <StockTakeDialog
+        open={stockTakeOpen}
+        onOpenChange={setStockTakeOpen}
+        products={products}
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
@@ -20,8 +20,12 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Minus,
+  ClipboardList,
+  X,
+  Percent,
+  Pencil,
 } from 'lucide-react';
-import type { Unit } from '@plastmassa/shared';
+import type { Unit, Supplier } from '@plastmassa/shared';
 import { cn, formatCurrency, formatNumber } from '@/lib/utils';
 import { useProduct } from '@/hooks/use-products';
 import { useUnits } from '@/hooks/use-units';
@@ -31,6 +35,9 @@ import {
   useCreateProductLot,
 } from '@/hooks/use-product-lots';
 import { ProductLotQuery } from '@/api/product-lots';
+import { useMaterials } from '@/hooks/use-materials';
+import { useSuppliers } from '@/hooks/use-suppliers';
+import { useActiveRecipe, usePlannedCost, useUpsertRecipe } from '@/hooks/use-recipes';
 import { toast } from '@/components/ui/use-toast';
 
 import { Button } from '@/components/ui/button';
@@ -81,31 +88,47 @@ const lotSchema = z.object({
   unit: z.string().min(1, 'O\'lchov birligini tanlang'),
   unitCost: z.coerce.number().min(0, 'Narx 0 dan kam bo\'lmasligi kerak'),
   supplier: z.string().optional(),
+  paidAmount: z.coerce.number().min(0, 'Summa 0 dan kam bo\'lmasligi kerak').optional(),
   notes: z.string().optional(),
 });
 
 type LotFormData = z.infer<typeof lotSchema>;
+
+const recipeItemSchema = z.object({
+  material: z.string().min(1, 'Xom-ashyoni tanlang'),
+  quantityPerUnit: z.coerce.number().min(0.0001, 'Miqdor 0 dan katta bo\'lishi kerak'),
+  wastagePercent: z.coerce.number().min(0).max(100).optional(),
+});
+
+const recipeSchema = z.object({
+  items: z.array(recipeItemSchema).min(1, 'Kamida bitta xom-ashyo qo\'shilishi kerak'),
+  laborCostPerUnit: z.coerce.number().min(0).optional(),
+  overheadPercent: z.coerce.number().min(0).optional(),
+  notes: z.string().optional(),
+});
+
+type RecipeFormData = z.infer<typeof recipeSchema>;
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const [page, setPage] = useState(1);
-  const [supplierSearch, setSupplierSearch] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const limit = 10;
 
-  const debouncedSupplierSearch = useDebounce(supplierSearch, 300);
-
   const { data: product, isLoading: isLoadingProduct, isError } = useProduct(id || '');
   const { data: units } = useUnits();
+  const { data: suppliersData } = useSuppliers({ limit: 200, isActive: true });
+  const suppliers = suppliersData?.items || [];
 
   const lotsParams: ProductLotQuery = {
     page,
     limit,
-    ...(debouncedSupplierSearch && { supplier: debouncedSupplierSearch }),
+    ...(supplierFilter !== 'all' && { supplier: supplierFilter }),
     ...(dateFrom && { dateFrom }),
     ...(dateTo && { dateTo }),
   };
@@ -113,6 +136,13 @@ export default function ProductDetailPage() {
   const { data: lotsData, isLoading: isLoadingLots } = useProductLotsByProduct(id || '', lotsParams);
   const { data: costHistory } = useProductCostHistory(id || '');
   const createLotMutation = useCreateProductLot();
+
+  const [recipeDialogOpen, setRecipeDialogOpen] = useState(false);
+  const { data: materialsData } = useMaterials({ limit: 200, isActive: true });
+  const { data: activeRecipe, isLoading: isLoadingRecipe } = useActiveRecipe(id || '');
+  const { data: plannedCost } = usePlannedCost(id || '');
+  const upsertRecipeMutation = useUpsertRecipe();
+  const materials = materialsData?.items || [];
 
   const lots = lotsData?.items || [];
   const totalPages = lotsData?.totalPages || 1;
@@ -158,13 +188,15 @@ export default function ProductDetailPage() {
       quantity: undefined,
       unit: '',
       unitCost: undefined,
-      supplier: '',
+      supplier: 'none',
+      paidAmount: undefined,
       notes: '',
     },
   });
 
   const watchQuantity = watch('quantity');
   const watchUnitCost = watch('unitCost');
+  const watchSupplier = watch('supplier');
 
   const calculatedTotal = useMemo(() => {
     return (Number(watchQuantity) || 0) * (Number(watchUnitCost) || 0);
@@ -173,6 +205,21 @@ export default function ProductDetailPage() {
   const lastLotCost = useMemo(() => {
     if (!costHistory || costHistory.length === 0) return 0;
     return costHistory[costHistory.length - 1].unitCost;
+  }, [costHistory]);
+
+  // Weighted-average cost of the stock currently remaining, computed FIFO-style
+  // from the still-open lots (quantityRemaining > 0)
+  const fifoAverageCost = useMemo(() => {
+    if (!costHistory || costHistory.length === 0) return 0;
+    let totalQty = 0;
+    let totalValue = 0;
+    for (const lot of costHistory) {
+      if (lot.quantityRemaining > 0) {
+        totalQty += lot.quantityRemaining;
+        totalValue += lot.quantityRemaining * lot.unitCost;
+      }
+    }
+    return totalQty > 0 ? totalValue / totalQty : 0;
   }, [costHistory]);
 
   useEffect(() => {
@@ -186,7 +233,8 @@ export default function ProductDetailPage() {
       quantity: undefined,
       unit: baseUnitId,
       unitCost: undefined,
-      supplier: '',
+      supplier: 'none',
+      paidAmount: undefined,
       notes: '',
     });
     setDialogOpen(true);
@@ -195,13 +243,15 @@ export default function ProductDetailPage() {
   const onSubmit = useCallback(
     async (data: LotFormData) => {
       if (!id) return;
+      const hasSupplier = !!(data.supplier && data.supplier !== 'none');
       try {
         await createLotMutation.mutateAsync({
           product: id,
           quantity: data.quantity,
           unit: data.unit,
           unitCost: data.unitCost,
-          supplier: data.supplier || undefined,
+          supplier: hasSupplier ? data.supplier : undefined,
+          paidAmount: hasSupplier && data.paidAmount ? data.paidAmount : undefined,
           notes: data.notes || undefined,
         });
         toast({ title: 'Muvaffaqiyatli', description: 'Yangi kirim muvaffaqiyatli saqlandi' });
@@ -213,6 +263,76 @@ export default function ProductDetailPage() {
     },
     [id, createLotMutation, reset],
   );
+
+  const {
+    register: registerRecipe,
+    handleSubmit: handleSubmitRecipe,
+    reset: resetRecipe,
+    control: recipeControl,
+    formState: { errors: recipeErrors },
+  } = useForm<RecipeFormData>({
+    resolver: zodResolver(recipeSchema),
+    defaultValues: { items: [], laborCostPerUnit: 0, overheadPercent: 0, notes: '' },
+  });
+
+  const { fields: recipeFields, append: appendRecipeItem, remove: removeRecipeItem } = useFieldArray({
+    control: recipeControl,
+    name: 'items',
+  });
+
+  const openRecipeDialog = useCallback(() => {
+    if (activeRecipe) {
+      resetRecipe({
+        items: activeRecipe.items.map((item) => ({
+          material: typeof item.material === 'object' ? item.material._id : item.material,
+          quantityPerUnit: item.quantityPerUnit,
+          wastagePercent: item.wastagePercent || 0,
+        })),
+        laborCostPerUnit: activeRecipe.laborCostPerUnit || (product as any)?.pieceRate || 0,
+        overheadPercent: activeRecipe.overheadPercent || 0,
+        notes: activeRecipe.notes || '',
+      });
+    } else {
+      resetRecipe({
+        items: [{ material: '', quantityPerUnit: 1, wastagePercent: 0 }],
+        laborCostPerUnit: (product as any)?.pieceRate || 0,
+        overheadPercent: 0,
+        notes: '',
+      });
+    }
+    setRecipeDialogOpen(true);
+  }, [activeRecipe, resetRecipe, product]);
+
+  const onSubmitRecipe = useCallback(
+    async (data: RecipeFormData) => {
+      if (!id) return;
+      try {
+        await upsertRecipeMutation.mutateAsync({
+          product: id,
+          items: data.items.map((item) => ({
+            material: item.material,
+            quantityPerUnit: item.quantityPerUnit,
+            wastagePercent: item.wastagePercent || 0,
+          })),
+          laborCostPerUnit: data.laborCostPerUnit || 0,
+          overheadPercent: data.overheadPercent || 0,
+          notes: data.notes || undefined,
+        });
+        toast({ title: 'Muvaffaqiyatli', description: 'Retsept muvaffaqiyatli saqlandi' });
+        setRecipeDialogOpen(false);
+      } catch {
+        toast({ title: 'Xatolik', description: 'Retseptni saqlashda xatolik yuz berdi', variant: 'destructive' });
+      }
+    },
+    [id, upsertRecipeMutation],
+  );
+
+  // Margin analysis: prefer the actual FIFO average cost of stock on hand; fall back
+  // to the recipe's theoretical planned cost when there's no stock history yet.
+  const effectiveCost = fifoAverageCost > 0 ? fifoAverageCost : (plannedCost?.totalCost ?? 0);
+  const marginPercent = product && product.price > 0 && effectiveCost > 0
+    ? ((product.price - effectiveCost) / product.price) * 100
+    : null;
 
   if (isLoadingProduct) {
     return (
@@ -293,7 +413,7 @@ export default function ProductDetailPage() {
       </motion.div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           title="Joriy zaxira"
           value={`${formatNumber(product.currentStock)} ${unitSymbol}`}
@@ -303,12 +423,20 @@ export default function ProductDetailPage() {
           index={0}
         />
         <StatCard
+          title="Joriy o'rtacha tannarx (FIFO)"
+          value={formatCurrency(fifoAverageCost)}
+          icon={TrendingUp}
+          iconColor="text-amber-400"
+          iconBg="bg-amber-500/20"
+          index={1}
+        />
+        <StatCard
           title="Oxirgi lot narxi"
           value={formatCurrency(lastLotCost)}
           icon={DollarSign}
           iconColor="text-emerald-400"
           iconBg="bg-emerald-500/20"
-          index={1}
+          index={2}
         />
         <StatCard
           title="Jami kirimlar soni"
@@ -316,7 +444,7 @@ export default function ProductDetailPage() {
           icon={Hash}
           iconColor="text-purple-400"
           iconBg="bg-purple-500/20"
-          index={2}
+          index={3}
         />
         <StatCard
           title="Jami kirim summasi"
@@ -324,7 +452,7 @@ export default function ProductDetailPage() {
           icon={DollarSign}
           iconColor="text-cyan-400"
           iconBg="bg-cyan-500/20"
-          index={3}
+          index={4}
         />
       </div>
 
@@ -389,6 +517,110 @@ export default function ProductDetailPage() {
         </motion.div>
       )}
 
+      {/* Recipe (BOM) & Cost Calculation Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.15 }}
+        className="bg-card/60 backdrop-blur-xl border border-border/50 rounded-2xl p-6 space-y-4"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ClipboardList className="h-5 w-5 text-indigo-400" />
+            <h2 className="text-lg font-semibold text-foreground">Retsept va kalkulyatsiya</h2>
+            {activeRecipe && (
+              <span className="text-sm text-muted-foreground">(v{activeRecipe.version})</span>
+            )}
+          </div>
+          <Button onClick={openRecipeDialog} variant="outline" size="sm" className="gap-2">
+            <Pencil className="h-3.5 w-3.5" />
+            {activeRecipe ? 'Retseptni tahrirlash' : 'Retsept qo\'shish'}
+          </Button>
+        </div>
+
+        {!isLoadingRecipe && !activeRecipe && (
+          <p className="text-sm text-muted-foreground py-4">
+            Bu mahsulot uchun hali retsept (xom-ashyo tarkibi) belgilanmagan. Retsept qo'shilsa,
+            tannarx xom-ashyo narxlaridan avtomatik hisoblanadi va ishlab chiqarishda xom-ashyo
+            zaxirasi to'g'ri kamayadi.
+          </p>
+        )}
+
+        {activeRecipe && plannedCost && (
+          <>
+            <div className="rounded-xl border border-border/60 overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Xom-ashyo</TableHead>
+                    <TableHead>Miqdor (1 dona uchun)</TableHead>
+                    <TableHead className="hidden sm:table-cell">Isrof %</TableHead>
+                    <TableHead className="hidden sm:table-cell">Joriy narx</TableHead>
+                    <TableHead>Tannarxdagi ulushi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {plannedCost.items.map((item) => (
+                    <TableRow key={item.material}>
+                      <TableCell className="font-medium">{item.materialName}</TableCell>
+                      <TableCell>{formatNumber(item.quantityPerUnit)}</TableCell>
+                      <TableCell className="hidden sm:table-cell text-muted-foreground">{item.wastagePercent}%</TableCell>
+                      <TableCell className="hidden sm:table-cell text-muted-foreground">{formatCurrency(item.unitCost)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(item.cost)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-xl bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Xom-ashyo narxi</p>
+                <p className="text-sm font-semibold text-foreground mt-1">{formatCurrency(plannedCost.materialCost)}</p>
+              </div>
+              <div className="rounded-xl bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Ishbay narxi</p>
+                <p className="text-sm font-semibold text-foreground mt-1">{formatCurrency(plannedCost.laborCost)}</p>
+              </div>
+              <div className="rounded-xl bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Ustama xarajat</p>
+                <p className="text-sm font-semibold text-foreground mt-1">{formatCurrency(plannedCost.overheadCost)}</p>
+              </div>
+              <div className="rounded-xl bg-indigo-500/10 p-3 border border-indigo-500/20">
+                <p className="text-xs text-muted-foreground">Rejalashtirilgan tannarx</p>
+                <p className="text-sm font-semibold text-indigo-300 mt-1">{formatCurrency(plannedCost.totalCost)}</p>
+              </div>
+            </div>
+          </>
+        )}
+
+        {marginPercent !== null && (
+          <div className={cn(
+            'flex items-center gap-3 rounded-xl p-4 border',
+            marginPercent < 0
+              ? 'bg-destructive/10 border-destructive/30'
+              : 'bg-emerald-500/10 border-emerald-500/20',
+          )}>
+            {marginPercent < 0 ? (
+              <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+            ) : (
+              <Percent className="h-5 w-5 text-emerald-400 shrink-0" />
+            )}
+            <div>
+              <p className={cn('text-sm font-medium', marginPercent < 0 ? 'text-destructive' : 'text-emerald-300')}>
+                {marginPercent < 0
+                  ? `Diqqat: sotuv narxi tannarxdan past! Marja: ${formatNumber(marginPercent)}%`
+                  : `Foyda marjasi: ${formatNumber(marginPercent)}%`}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Sotuv narxi: {formatCurrency(product.price)} · Tannarx: {formatCurrency(effectiveCost)}
+                {fifoAverageCost > 0 ? ' (FIFO haqiqiy)' : ' (retsept bo\'yicha rejalashtirilgan)'}
+              </p>
+            </div>
+          </div>
+        )}
+      </motion.div>
+
       {/* Lots History Section */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -400,15 +632,20 @@ export default function ProductDetailPage() {
 
         {/* Filters */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Yetkazuvchi bo'yicha qidirish..."
-              value={supplierSearch}
-              onChange={(e) => { setSupplierSearch(e.target.value); setPage(1); }}
-              className="pl-9"
-            />
-          </div>
+          <Select
+            value={supplierFilter}
+            onValueChange={(value) => { setSupplierFilter(value); setPage(1); }}
+          >
+            <SelectTrigger className="w-full sm:w-56">
+              <SelectValue placeholder="Yetkazib beruvchi" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Barcha yetkazib beruvchilar</SelectItem>
+              {suppliers.map((s) => (
+                <SelectItem key={s._id} value={s._id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <div className="flex items-center gap-2">
             <div className="relative">
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -471,11 +708,13 @@ export default function ProductDetailPage() {
                     <TableCell className="hidden sm:table-cell">
                       <span className={cn(
                         'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                        lot.source === 'PRODUCTION'
-                          ? 'bg-purple-500/20 text-purple-300'
-                          : 'bg-emerald-500/20 text-emerald-300'
+                        lot.source === 'PRODUCTION' && 'bg-purple-500/20 text-purple-300',
+                        lot.source === 'ADJUSTMENT' && 'bg-amber-500/20 text-amber-300',
+                        lot.source === 'PURCHASE' && 'bg-emerald-500/20 text-emerald-300',
                       )}>
-                        {lot.source === 'PRODUCTION' ? 'Ishlab chiqarish' : 'Xarid'}
+                        {lot.source === 'PRODUCTION' && 'Ishlab chiqarish'}
+                        {lot.source === 'ADJUSTMENT' && 'Tuzatish'}
+                        {lot.source === 'PURCHASE' && 'Xarid'}
                       </span>
                     </TableCell>
                     <TableCell className="hidden sm:table-cell text-muted-foreground">
@@ -485,7 +724,9 @@ export default function ProductDetailPage() {
                       {formatCurrency(lot.totalCost)}
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">
-                      {lot.supplier || '-'}
+                      {typeof lot.supplier === 'object' && lot.supplier !== null
+                        ? lot.supplier.name
+                        : suppliers.find((s) => s._id === lot.supplier)?.name || '-'}
                     </TableCell>
                     <TableCell className="hidden lg:table-cell text-muted-foreground max-w-[200px] truncate">
                       {lot.notes || '-'}
@@ -592,9 +833,47 @@ export default function ProductDetailPage() {
 
             {/* Supplier */}
             <div className="space-y-2">
-              <Label htmlFor="supplier">Yetkazuvchi</Label>
-              <Input id="supplier" placeholder="Yetkazuvchi nomi" {...register('supplier')} />
+              <Label>Yetkazib beruvchi</Label>
+              <Controller
+                name="supplier"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value || 'none'} onValueChange={field.onChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Yetkazib beruvchini tanlang" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Tanlanmagan</SelectItem>
+                      {suppliers.map((s) => (
+                        <SelectItem key={s._id} value={s._id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <p className="text-xs text-muted-foreground">
+                Yetkazib beruvchi tanlansa, kirim summasi unga qarz sifatida yoziladi
+              </p>
             </div>
+
+            {watchSupplier && watchSupplier !== 'none' && (
+              <div className="space-y-2">
+                <Label htmlFor="paidAmount">Darhol to'langan summa (naqd)</Label>
+                <Input
+                  id="paidAmount"
+                  type="number"
+                  step="any"
+                  min={0}
+                  max={calculatedTotal || undefined}
+                  placeholder="0"
+                  {...register('paidAmount')}
+                />
+                {errors.paidAmount && <p className="text-xs text-destructive">{errors.paidAmount.message}</p>}
+                <p className="text-xs text-muted-foreground">
+                  To'ldirilsa, shu summa kassadan darhol yechiladi va faqat qoldiq qarzga yoziladi. Bo'sh qoldirilsa, jami summa qarzga yoziladi.
+                </p>
+              </div>
+            )}
 
             {/* Notes */}
             <div className="space-y-2">
@@ -607,6 +886,113 @@ export default function ProductDetailPage() {
               <Button type="submit" disabled={createLotMutation.isPending}>
                 {createLotMutation.isPending && <LoadingSpinner size="sm" className="mr-2 h-4 w-4" />}
                 Kirimni saqlash
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Recipe (BOM) Dialog */}
+      <Dialog open={recipeDialogOpen} onOpenChange={setRecipeDialogOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Retsept (xom-ashyo tarkibi)</DialogTitle>
+            <DialogDescription>
+              {product.name} — 1 dona/birlik ishlab chiqarish uchun kerakli xom-ashyolarni belgilang
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmitRecipe(onSubmitRecipe)} className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label>Xom-ashyolar <span className="text-destructive">*</span></Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => appendRecipeItem({ material: '', quantityPerUnit: 1, wastagePercent: 0 })}
+                className="gap-1"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Qo'shish
+              </Button>
+            </div>
+
+            {recipeErrors.items?.message && (
+              <p className="text-xs text-destructive">{recipeErrors.items.message}</p>
+            )}
+
+            {recipeFields.map((field, index) => (
+              <div key={field.id} className="bg-muted/30 rounded-xl p-4 space-y-3 relative">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeRecipeItem(index)}
+                  className="absolute top-2 right-2 h-7 w-7 text-muted-foreground hover:text-destructive"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pr-8">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Xom-ashyo</Label>
+                    <Controller
+                      name={`items.${index}.material`}
+                      control={recipeControl}
+                      render={({ field: selectField }) => (
+                        <Select value={selectField.value} onValueChange={selectField.onChange}>
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Tanlang" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {materials.map((m) => (
+                              <SelectItem key={m._id} value={m._id}>{m.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                    {recipeErrors.items?.[index]?.material && (
+                      <p className="text-xs text-destructive">{recipeErrors.items[index]?.material?.message}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Miqdor (1 dona uchun)</Label>
+                    <Input type="number" min={0.0001} step="any" placeholder="1" className="h-9" {...registerRecipe(`items.${index}.quantityPerUnit`)} />
+                    {recipeErrors.items?.[index]?.quantityPerUnit && (
+                      <p className="text-xs text-destructive">{recipeErrors.items[index]?.quantityPerUnit?.message}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Isrof %</Label>
+                    <Input type="number" min={0} max={100} step="any" placeholder="0" className="h-9" {...registerRecipe(`items.${index}.wastagePercent`)} />
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="laborCostPerUnit">Ishbay narxi (birlik uchun)</Label>
+                <Input id="laborCostPerUnit" type="number" min={0} step="any" placeholder="0" {...registerRecipe('laborCostPerUnit')} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="overheadPercent">Ustama xarajat %</Label>
+                <Input id="overheadPercent" type="number" min={0} step="any" placeholder="0" {...registerRecipe('overheadPercent')} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="recipeNotes">Izoh</Label>
+              <Textarea id="recipeNotes" placeholder="Qo'shimcha ma'lumot..." {...registerRecipe('notes')} />
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={() => setRecipeDialogOpen(false)}>Bekor qilish</Button>
+              <Button type="submit" disabled={upsertRecipeMutation.isPending}>
+                {upsertRecipeMutation.isPending && <LoadingSpinner size="sm" className="mr-2 h-4 w-4" />}
+                Retseptni saqlash
               </Button>
             </DialogFooter>
           </form>

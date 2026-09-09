@@ -1,24 +1,31 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useForm, Controller, useFieldArray, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 import {
   Plus,
+  Trash2,
   Package,
   Search,
   Calendar,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import type { Unit } from '@plastmassa/shared';
+import type { Product, Supplier, Unit } from '@plastmassa/shared';
 import { cn, formatCurrency, formatNumber } from '@/lib/utils';
 import { useProducts } from '@/hooks/use-products';
-import { useProductLots, useCreateProductLot } from '@/hooks/use-product-lots';
+import { useProductLots, useProductLotBatches, useCreateProductLotBatch } from '@/hooks/use-product-lots';
 import { useUnits } from '@/hooks/use-units';
-import { ProductLotQuery } from '@/api/product-lots';
+import { useSuppliers } from '@/hooks/use-suppliers';
 import { toast } from '@/components/ui/use-toast';
+import { ProductImage } from '@/components/shared/product-image';
+import { ProductSearchSelect } from '@/components/shared/product-search-select';
+import { SupplierSearchSelect } from '@/components/shared/supplier-search-select';
+import { QuickCreateProductDialog } from '@/components/shared/quick-create-product-dialog';
+import { QuickCreateSupplierDialog } from '@/components/shared/quick-create-supplier-dialog';
+import { EditLotBatchDialog } from '@/components/products/edit-lot-batch-dialog';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,114 +68,284 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-const lotSchema = z.object({
+const lotItemSchema = z.object({
   product: z.string().min(1, 'Mahsulotni tanlang'),
   quantity: z.coerce.number().positive('Miqdor 0 dan katta bo\'lishi kerak'),
   unit: z.string().min(1, 'O\'lchov birligini tanlang'),
   unitCost: z.coerce.number().min(0, 'Narx 0 dan kam bo\'lmasligi kerak'),
-  supplier: z.string().optional(),
-  notes: z.string().optional(),
+  sellPrice: z.coerce.number().min(0, 'Narx 0 dan kam bo\'lmasligi kerak').optional(),
 });
 
-type LotFormData = z.infer<typeof lotSchema>;
+const batchSchema = z.object({
+  supplier: z.string().optional(),
+  paidAmount: z.coerce.number().min(0, 'Summa 0 dan kam bo\'lmasligi kerak').optional(),
+  notes: z.string().optional(),
+  items: z.array(lotItemSchema).min(1, 'Kamida bitta mahsulot qatori kerak'),
+});
+
+type BatchFormData = z.infer<typeof batchSchema>;
+
+const emptyItem = { product: '', quantity: undefined as any, unit: '', unitCost: undefined as any, sellPrice: undefined as any };
 
 export default function ProductLotsPage() {
   const [page, setPage] = useState(1);
-  const [supplierSearch, setSupplierSearch] = useState('');
-  const [productFilter, setProductFilter] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editBatchNumber, setEditBatchNumber] = useState<string | null>(null);
   const limit = 10;
 
-  const debouncedSupplierSearch = useDebounce(supplierSearch, 300);
-
-  const queryParams: ProductLotQuery = {
+  const batchQueryParams = {
     page,
     limit,
-    ...(debouncedSupplierSearch && { supplier: debouncedSupplierSearch }),
-    ...(productFilter && { product: productFilter }),
+    ...(supplierFilter !== 'all' && { supplier: supplierFilter }),
     ...(dateFrom && { dateFrom }),
     ...(dateTo && { dateTo }),
   };
 
-  const { data: lotsData, isLoading } = useProductLots(queryParams);
+  const { data: batchesData, isLoading } = useProductLotBatches(batchQueryParams);
   const { data: productsData } = useProducts({ limit: 100 });
   const { data: units } = useUnits();
-  const createLotMutation = useCreateProductLot();
+  const { data: suppliersData } = useSuppliers({ limit: 200, isActive: true });
+  const createBatchMutation = useCreateProductLotBatch();
 
-  const lots = lotsData?.items || [];
-  const totalPages = lotsData?.totalPages || 1;
-  const totalCount = lotsData?.total || 0;
-  const products = productsData?.items || [];
+  // Independent of the table's own filters — always the true most-recent lots,
+  // used to derive the "recently used products" combobox suggestions.
+  const { data: recentLotsData } = useProductLots({ limit: 50, sortBy: 'createdAt', sortOrder: 'desc' });
 
-  const totalSum = useMemo(() => lots.reduce((sum, l) => sum + l.totalCost, 0), [lots]);
+  // Newly-created products/suppliers (via the "quick create" flow) are merged in immediately
+  // so the combobox shows them without waiting for the underlying query to refetch.
+  const [justCreatedProducts, setJustCreatedProducts] = useState<Product[]>([]);
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [quickCreateRowIndex, setQuickCreateRowIndex] = useState<number | null>(null);
+  const [quickCreateInitialName, setQuickCreateInitialName] = useState('');
+
+  const [justCreatedSuppliers, setJustCreatedSuppliers] = useState<Supplier[]>([]);
+  const [quickCreateSupplierOpen, setQuickCreateSupplierOpen] = useState(false);
+  const [quickCreateSupplierInitialName, setQuickCreateSupplierInitialName] = useState('');
+
+  const batches = batchesData?.items || [];
+  const totalPages = batchesData?.totalPages || 1;
+  const totalCount = batchesData?.total || 0;
+  const fetchedProducts = productsData?.items || [];
+  const products = useMemo(() => {
+    const extra = justCreatedProducts.filter((jc) => !fetchedProducts.some((p) => p._id === jc._id));
+    return [...fetchedProducts, ...extra];
+  }, [fetchedProducts, justCreatedProducts]);
+
+  const fetchedSuppliers = suppliersData?.items || [];
+  const suppliers = useMemo(() => {
+    const extra = justCreatedSuppliers.filter((jc) => !fetchedSuppliers.some((s) => s._id === jc._id));
+    return [...fetchedSuppliers, ...extra];
+  }, [fetchedSuppliers, justCreatedSuppliers]);
+
+  const recentProducts = useMemo(() => {
+    const seen = new Set<string>();
+    const result: Product[] = [];
+    for (const lot of recentLotsData?.items || []) {
+      const p = lot.product;
+      if (p && typeof p === 'object' && '_id' in p && !seen.has((p as Product)._id)) {
+        seen.add((p as Product)._id);
+        result.push(p as Product);
+        if (result.length >= 5) break;
+      }
+    }
+    return result;
+  }, [recentLotsData]);
+
+  // A synthetic "no supplier" entry so it's selectable/searchable the same way as a real one,
+  // and so the field can display something meaningful when nothing is chosen.
+  const supplierComboItems = useMemo<Supplier[]>(
+    () => [{ _id: 'none', name: "Tanlanmagan (yetkazib beruvchisiz)" } as Supplier, ...suppliers],
+    [suppliers],
+  );
+
+  const recentSuppliers = useMemo(() => {
+    const seen = new Set<string>();
+    const result: Supplier[] = [];
+    for (const lot of recentLotsData?.items || []) {
+      const s = lot.supplier;
+      if (s && typeof s === 'object' && '_id' in s && !seen.has((s as Supplier)._id)) {
+        seen.add((s as Supplier)._id);
+        result.push(s as Supplier);
+        if (result.length >= 5) break;
+      }
+    }
+    return result;
+  }, [recentLotsData]);
+
+  const totalSum = useMemo(() => batches.reduce((sum, b) => sum + b.totalSum, 0), [batches]);
 
   const {
     register,
     handleSubmit,
     reset,
     control,
-    watch,
+    setValue,
     formState: { errors },
-  } = useForm<LotFormData>({
-    resolver: zodResolver(lotSchema),
+  } = useForm<BatchFormData>({
+    resolver: zodResolver(batchSchema),
     defaultValues: {
-      product: '',
-      quantity: undefined,
-      unit: '',
-      unitCost: undefined,
-      supplier: '',
+      supplier: 'none',
+      paidAmount: undefined,
       notes: '',
+      items: [emptyItem],
     },
   });
 
-  const watchProduct = watch('product');
-  const watchQuantity = watch('quantity');
-  const watchUnitCost = watch('unitCost');
+  const { fields, append, remove } = useFieldArray({ control, name: 'items' });
 
-  const selectedProduct = useMemo(
-    () => products.find((p) => p._id === watchProduct),
-    [products, watchProduct],
+  // useWatch (not form.watch()) so row totals reliably re-render on every keystroke,
+  // including edits to an already-filled field — form.watch() is known to lag with
+  // nested useFieldArray values.
+  const watchItems = useWatch({ control, name: 'items' });
+  const watchSupplier = useWatch({ control, name: 'supplier' });
+
+  const rowTotals = useMemo(
+    () => (watchItems || []).map((it) => (Number(it?.quantity) || 0) * (Number(it?.unitCost) || 0)),
+    [watchItems],
   );
-
-  const calculatedTotal = useMemo(() => {
-    return (Number(watchQuantity) || 0) * (Number(watchUnitCost) || 0);
-  }, [watchQuantity, watchUnitCost]);
-
-  // Set default unit when product is selected
-  useEffect(() => {
-    if (selectedProduct) {
-      const baseUnitId =
-        typeof selectedProduct.baseUnit === 'object' && selectedProduct.baseUnit !== null
-          ? (selectedProduct.baseUnit as Unit)._id
-          : (selectedProduct.baseUnit as string);
-      reset((prev) => ({ ...prev, unit: baseUnitId }));
-    }
-  }, [selectedProduct, reset]);
+  const grandTotal = useMemo(() => rowTotals.reduce((s, v) => s + v, 0), [rowTotals]);
 
   const openDialog = useCallback(() => {
     reset({
-      product: '',
-      quantity: undefined,
-      unit: '',
-      unitCost: undefined,
-      supplier: '',
+      supplier: 'none',
+      paidAmount: undefined,
       notes: '',
+      items: [emptyItem],
     });
+    fieldRefs.current.clear();
     setDialogOpen(true);
   }, [reset]);
 
+  const handleProductSelect = useCallback(
+    (index: number, product: Product) => {
+      setValue(`items.${index}.product`, product._id);
+      const baseUnitId =
+        typeof product.baseUnit === 'object' && product.baseUnit !== null
+          ? (product.baseUnit as Unit)._id
+          : (product.baseUnit as string);
+      setValue(`items.${index}.unit`, baseUnitId);
+      if (typeof product.price === 'number') {
+        setValue(`items.${index}.sellPrice`, product.price as any);
+      }
+    },
+    [setValue],
+  );
+
+  const openQuickCreate = useCallback((index: number, searchText: string) => {
+    setQuickCreateRowIndex(index);
+    setQuickCreateInitialName(searchText);
+    setQuickCreateOpen(true);
+  }, []);
+
+  const handleProductCreated = useCallback(
+    (product: Product) => {
+      setJustCreatedProducts((prev) => [...prev, product]);
+      if (quickCreateRowIndex !== null) {
+        handleProductSelect(quickCreateRowIndex, product);
+      }
+      setQuickCreateOpen(false);
+      setQuickCreateRowIndex(null);
+    },
+    [quickCreateRowIndex, handleProductSelect],
+  );
+
+  // ── Keyboard navigation: Enter moves focus supplier -> row1.product -> row1.quantity ->
+  // row1.unit -> row1.unitCost -> row1.sellPrice -> row2.product -> ... A new row is appended
+  // automatically when Enter is pressed on the last field of the last row.
+  const fieldRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const pendingFocusNewRowRef = useRef(false);
+
+  const registerFieldRef = useCallback(
+    (key: string) => (el: HTMLElement | null) => {
+      if (el) fieldRefs.current.set(key, el);
+      else fieldRefs.current.delete(key);
+    },
+    [],
+  );
+
+  const getFocusOrder = useCallback((): string[] => {
+    const order: string[] = ['supplier'];
+    for (const f of fields) {
+      order.push(
+        `${f.id}:product`,
+        `${f.id}:quantity`,
+        `${f.id}:unit`,
+        `${f.id}:unitCost`,
+        `${f.id}:sellPrice`,
+      );
+    }
+    return order;
+  }, [fields]);
+
+  const focusNext = useCallback(
+    (currentKey: string) => {
+      const order = getFocusOrder();
+      const idx = order.indexOf(currentKey);
+      if (idx === -1) return;
+      if (idx === order.length - 1) {
+        pendingFocusNewRowRef.current = true;
+        append(emptyItem);
+      } else {
+        fieldRefs.current.get(order[idx + 1])?.focus();
+      }
+    },
+    [getFocusOrder, append],
+  );
+
+  useEffect(() => {
+    if (pendingFocusNewRowRef.current && fields.length > 0) {
+      const lastField = fields[fields.length - 1];
+      const el = fieldRefs.current.get(`${lastField.id}:product`);
+      if (el) {
+        el.focus();
+        pendingFocusNewRowRef.current = false;
+      }
+    }
+  }, [fields]);
+
+  const handleSupplierSelect = useCallback(
+    (supplier: Supplier) => {
+      setValue('supplier', supplier._id);
+      // Move focus straight into the first row's product search field.
+      const order = getFocusOrder();
+      const nextKey = order[1]; // order[0] is 'supplier' itself
+      if (nextKey) fieldRefs.current.get(nextKey)?.focus();
+    },
+    [setValue, getFocusOrder],
+  );
+
+  const openQuickCreateSupplier = useCallback((searchText: string) => {
+    setQuickCreateSupplierInitialName(searchText);
+    setQuickCreateSupplierOpen(true);
+  }, []);
+
+  const handleSupplierCreated = useCallback(
+    (supplier: Supplier) => {
+      setJustCreatedSuppliers((prev) => [...prev, supplier]);
+      handleSupplierSelect(supplier);
+      setQuickCreateSupplierOpen(false);
+    },
+    [handleSupplierSelect],
+  );
+
   const onSubmit = useCallback(
-    async (data: LotFormData) => {
+    async (data: BatchFormData) => {
+      const hasSupplier = !!(data.supplier && data.supplier !== 'none');
       try {
-        await createLotMutation.mutateAsync({
-          product: data.product,
-          quantity: data.quantity,
-          unit: data.unit,
-          unitCost: data.unitCost,
-          supplier: data.supplier || undefined,
+        await createBatchMutation.mutateAsync({
+          supplier: hasSupplier ? data.supplier : undefined,
+          paidAmount: hasSupplier && data.paidAmount ? data.paidAmount : undefined,
           notes: data.notes || undefined,
+          items: data.items.map((it) => ({
+            product: it.product,
+            quantity: it.quantity,
+            unit: it.unit,
+            unitCost: it.unitCost,
+            sellPrice: it.sellPrice !== undefined && it.sellPrice !== null ? it.sellPrice : undefined,
+          })),
         });
         toast({ title: 'Muvaffaqiyatli', description: 'Yangi kirim muvaffaqiyatli saqlandi' });
         setDialogOpen(false);
@@ -177,18 +354,8 @@ export default function ProductLotsPage() {
         toast({ title: 'Xatolik', description: 'Kirimni saqlashda xatolik yuz berdi', variant: 'destructive' });
       }
     },
-    [createLotMutation, reset],
+    [createBatchMutation, reset],
   );
-
-  const getUnitSymbol = (lot: any): string => {
-    if (typeof lot.unit === 'object' && lot.unit !== null) return lot.unit.symbol;
-    return '';
-  };
-
-  const getProductName = (lot: any): string => {
-    if (typeof lot.product === 'object' && lot.product !== null) return lot.product.name;
-    return '';
-  };
 
   return (
     <div className="space-y-6">
@@ -233,26 +400,17 @@ export default function ProductLotsPage() {
         transition={{ duration: 0.3, delay: 0.2 }}
         className="flex flex-col gap-3 sm:flex-row sm:items-center flex-wrap"
       >
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Yetkazuvchi bo'yicha qidirish..."
-            value={supplierSearch}
-            onChange={(e) => { setSupplierSearch(e.target.value); setPage(1); }}
-            className="pl-9"
-          />
-        </div>
         <Select
-          value={productFilter}
-          onValueChange={(val) => { setProductFilter(val === 'all' ? '' : val); setPage(1); }}
+          value={supplierFilter}
+          onValueChange={(value) => { setSupplierFilter(value); setPage(1); }}
         >
-          <SelectTrigger className="w-full sm:w-52">
-            <SelectValue placeholder="Barcha mahsulotlar" />
+          <SelectTrigger className="w-full sm:w-56">
+            <SelectValue placeholder="Yetkazib beruvchi" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Barcha mahsulotlar</SelectItem>
-            {products.map((p) => (
-              <SelectItem key={p._id} value={p._id}>{p.name}</SelectItem>
+            <SelectItem value="all">Barcha yetkazib beruvchilar</SelectItem>
+            {suppliers.map((s) => (
+              <SelectItem key={s._id} value={s._id}>{s.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -272,59 +430,51 @@ export default function ProductLotsPage() {
       {/* Table */}
       <DataTableWrapper
         isLoading={isLoading}
-        isEmpty={!isLoading && lots.length === 0}
+        isEmpty={!isLoading && batches.length === 0}
         emptyTitle="Kirimlar topilmadi"
         emptyDescription="Hozircha hech qanday kirim qayd etilmagan"
       >
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead>Lot #</TableHead>
-              <TableHead>Mahsulot</TableHead>
-              <TableHead className="hidden sm:table-cell">Sana</TableHead>
-              <TableHead>Miqdor</TableHead>
-              <TableHead>Qoldiq</TableHead>
+              <TableHead>Sana</TableHead>
+              <TableHead>Yetkazib beruvchi</TableHead>
+              <TableHead>Mahsulotlar soni</TableHead>
               <TableHead className="hidden sm:table-cell">Manba</TableHead>
-              <TableHead className="hidden sm:table-cell">Narx</TableHead>
-              <TableHead>Jami</TableHead>
-              <TableHead className="hidden md:table-cell">Yetkazuvchi</TableHead>
+              <TableHead>Jami summa</TableHead>
               <TableHead className="hidden lg:table-cell">Kim</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {lots.map((lot) => (
-              <TableRow key={lot._id}>
-                <TableCell className="font-mono text-sm">{lot.lotNumber}</TableCell>
-                <TableCell className="font-medium">{getProductName(lot)}</TableCell>
-                <TableCell className="hidden sm:table-cell text-muted-foreground">
-                  {format(new Date(lot.createdAt), 'dd.MM.yyyy HH:mm')}
+            {batches.map((batch) => (
+              <TableRow
+                key={batch.batchNumber}
+                className="cursor-pointer hover:bg-muted/40"
+                onClick={() => setEditBatchNumber(batch.batchNumber)}
+              >
+                <TableCell className="text-muted-foreground">
+                  {format(new Date(batch.createdAt), 'dd.MM.yyyy HH:mm')}
                 </TableCell>
                 <TableCell className="font-medium">
-                  {formatNumber(lot.quantity)} {getUnitSymbol(lot)}
+                  {batch.supplier?.name || '-'}
                 </TableCell>
-                <TableCell className="font-medium">
-                  {formatNumber(lot.quantityRemaining)} {getUnitSymbol(lot)}
-                </TableCell>
+                <TableCell className="font-medium">{batch.itemCount}</TableCell>
                 <TableCell className="hidden sm:table-cell">
                   <span className={cn(
                     'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                    lot.source === 'PRODUCTION'
-                      ? 'bg-purple-500/20 text-purple-300'
-                      : 'bg-emerald-500/20 text-emerald-300'
+                    batch.source === 'PRODUCTION' && 'bg-purple-500/20 text-purple-300',
+                    batch.source === 'ADJUSTMENT' && 'bg-amber-500/20 text-amber-300',
+                    batch.source === 'PURCHASE' && 'bg-emerald-500/20 text-emerald-300',
                   )}>
-                    {lot.source === 'PRODUCTION' ? 'Ishlab chiqarish' : 'Xarid'}
+                    {batch.source === 'PRODUCTION' && 'Ishlab chiqarish'}
+                    {batch.source === 'ADJUSTMENT' && 'Tuzatish'}
+                    {batch.source === 'PURCHASE' && 'Xarid'}
                   </span>
                 </TableCell>
-                <TableCell className="hidden sm:table-cell text-muted-foreground">
-                  {formatCurrency(lot.unitCost)}
-                </TableCell>
-                <TableCell className="font-medium">{formatCurrency(lot.totalCost)}</TableCell>
-                <TableCell className="hidden md:table-cell text-muted-foreground">
-                  {lot.supplier || '-'}
-                </TableCell>
+                <TableCell className="font-medium">{formatCurrency(batch.totalSum)}</TableCell>
                 <TableCell className="hidden lg:table-cell text-muted-foreground">
-                  {typeof lot.createdBy === 'object' && lot.createdBy !== null
-                    ? lot.createdBy.fullName
+                  {typeof batch.createdBy === 'object' && batch.createdBy !== null
+                    ? batch.createdBy.fullName
                     : '-'}
                 </TableCell>
               </TableRow>
@@ -368,83 +518,248 @@ export default function ProductLotsPage() {
 
       {/* New Lot Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Yangi mahsulot kirimi</DialogTitle>
-            <DialogDescription>Yangi kirim ma'lumotlarini kiriting</DialogDescription>
+            <DialogDescription>
+              Bitta yetkazib beruvchidan bir nechta mahsulotni birgalikda kiriting
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            {/* Product Select */}
+            {/* Supplier */}
             <div className="space-y-2">
-              <Label>Mahsulot <span className="text-destructive">*</span></Label>
+              <Label>Yetkazib beruvchi</Label>
               <Controller
-                name="product"
+                name="supplier"
                 control={control}
                 render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Mahsulotni tanlang" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {products.map((p) => (
-                        <SelectItem key={p._id} value={p._id}>{p.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SupplierSearchSelect
+                    suppliers={supplierComboItems}
+                    recentSuppliers={recentSuppliers}
+                    value={field.value || 'none'}
+                    onSelect={handleSupplierSelect}
+                    onCreateNew={openQuickCreateSupplier}
+                    inputRef={registerFieldRef('supplier')}
+                    onEnterNext={() => focusNext('supplier')}
+                  />
                 )}
               />
-              {errors.product && <p className="text-xs text-destructive">{errors.product.message}</p>}
+              <p className="text-xs text-muted-foreground">
+                Yetkazib beruvchi tanlansa, kirim summasi unga qarz sifatida yoziladi
+              </p>
             </div>
 
-            {/* Quantity */}
-            <div className="space-y-2">
-              <Label htmlFor="quantity">Miqdor <span className="text-destructive">*</span></Label>
-              <Input id="quantity" type="number" step="any" min={0} placeholder="0" {...register('quantity')} />
-              {errors.quantity && <p className="text-xs text-destructive">{errors.quantity.message}</p>}
+            {/* Items */}
+            <div className="space-y-3">
+              <Label>Mahsulotlar <span className="text-destructive">*</span></Label>
+              {fields.map((field, index) => (
+                <div key={field.id} className="rounded-xl border border-input p-3 space-y-3 relative">
+                  {fields.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => remove(index)}
+                      className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+
+                  <div className="space-y-2 pr-6">
+                    <Label className="text-xs">Mahsulot <span className="text-destructive">*</span></Label>
+                    <div className="flex items-center gap-3">
+                      <ProductImage
+                        src={products.find((p) => p._id === watchItems?.[index]?.product)?.imageUrl}
+                        alt={products.find((p) => p._id === watchItems?.[index]?.product)?.name || 'Mahsulot'}
+                        className="h-14 w-14 shrink-0 rounded-xl border border-border/60 bg-background"
+                        iconClassName="h-5 w-5"
+                      />
+                      <div className="flex-1">
+                        <Controller
+                          name={`items.${index}.product`}
+                          control={control}
+                          render={({ field: f }) => (
+                            <ProductSearchSelect
+                              products={products}
+                              recentProducts={recentProducts}
+                              value={f.value}
+                              onSelect={(product) => handleProductSelect(index, product)}
+                              onCreateNew={(searchText) => openQuickCreate(index, searchText)}
+                              inputRef={registerFieldRef(`${field.id}:product`)}
+                              onEnterNext={() => focusNext(`${field.id}:product`)}
+                            />
+                          )}
+                        />
+                      </div>
+                    </div>
+                    {errors.items?.[index]?.product && (
+                      <p className="text-xs text-destructive">{errors.items[index]?.product?.message}</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="space-y-2">
+                      <Label className="text-xs">Miqdor <span className="text-destructive">*</span></Label>
+                      {(() => {
+                        const rhf = register(`items.${index}.quantity`);
+                        return (
+                          <Input
+                            type="number"
+                            step="any"
+                            min={0}
+                            placeholder="0"
+                            {...rhf}
+                            ref={(el) => {
+                              rhf.ref(el);
+                              registerFieldRef(`${field.id}:quantity`)(el);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                focusNext(`${field.id}:quantity`);
+                              }
+                            }}
+                          />
+                        );
+                      })()}
+                      {errors.items?.[index]?.quantity && (
+                        <p className="text-xs text-destructive">{errors.items[index]?.quantity?.message}</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs">Birlik <span className="text-destructive">*</span></Label>
+                      <Controller
+                        name={`items.${index}.unit`}
+                        control={control}
+                        render={({ field: f }) => (
+                          <Select value={f.value} onValueChange={f.onChange}>
+                            <SelectTrigger
+                              ref={registerFieldRef(`${field.id}:unit`)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  focusNext(`${field.id}:unit`);
+                                }
+                              }}
+                            >
+                              <SelectValue placeholder="Birlik" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {units?.map((unit) => (
+                                <SelectItem key={unit._id} value={unit._id}>{unit.symbol}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                      {errors.items?.[index]?.unit && (
+                        <p className="text-xs text-destructive">{errors.items[index]?.unit?.message}</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs">Olish narxi <span className="text-destructive">*</span></Label>
+                      {(() => {
+                        const rhf = register(`items.${index}.unitCost`);
+                        return (
+                          <Input
+                            type="number"
+                            step="any"
+                            min={0}
+                            placeholder="0"
+                            {...rhf}
+                            ref={(el) => {
+                              rhf.ref(el);
+                              registerFieldRef(`${field.id}:unitCost`)(el);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                focusNext(`${field.id}:unitCost`);
+                              }
+                            }}
+                          />
+                        );
+                      })()}
+                      {errors.items?.[index]?.unitCost && (
+                        <p className="text-xs text-destructive">{errors.items[index]?.unitCost?.message}</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs">Sotish narxi</Label>
+                      {(() => {
+                        const rhf = register(`items.${index}.sellPrice`);
+                        return (
+                          <Input
+                            type="number"
+                            step="any"
+                            min={0}
+                            placeholder="0"
+                            {...rhf}
+                            ref={(el) => {
+                              rhf.ref(el);
+                              registerFieldRef(`${field.id}:sellPrice`)(el);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                focusNext(`${field.id}:sellPrice`);
+                              }
+                            }}
+                          />
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  <div className="text-right text-xs text-muted-foreground">
+                    Qator jami: <span className="font-medium text-foreground">{formatCurrency(rowTotals[index] || 0)}</span>
+                  </div>
+                </div>
+              ))}
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => append(emptyItem)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Qator qo'shish
+              </Button>
+              {errors.items && !Array.isArray(errors.items) && (
+                <p className="text-xs text-destructive">{(errors.items as any).message}</p>
+              )}
             </div>
 
-            {/* Unit */}
+            {/* Grand Total */}
             <div className="space-y-2">
-              <Label>O'lchov birligi <span className="text-destructive">*</span></Label>
-              <Controller
-                name="unit"
-                control={control}
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="O'lchov birligini tanlang" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {units?.map((unit) => (
-                        <SelectItem key={unit._id} value={unit._id}>{unit.name} ({unit.symbol})</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              {errors.unit && <p className="text-xs text-destructive">{errors.unit.message}</p>}
-            </div>
-
-            {/* Unit Cost */}
-            <div className="space-y-2">
-              <Label htmlFor="unitCost">Narx (birlik uchun) <span className="text-destructive">*</span></Label>
-              <Input id="unitCost" type="number" step="any" min={0} placeholder="0" {...register('unitCost')} />
-              {errors.unitCost && <p className="text-xs text-destructive">{errors.unitCost.message}</p>}
-            </div>
-
-            {/* Total */}
-            <div className="space-y-2">
-              <Label>Jami</Label>
+              <Label>Umumiy jami</Label>
               <div className="flex items-center h-10 px-3 rounded-xl border border-input bg-muted/50 text-sm font-medium text-foreground">
-                {formatCurrency(calculatedTotal)}
+                {formatCurrency(grandTotal)}
               </div>
             </div>
 
-            {/* Supplier */}
-            <div className="space-y-2">
-              <Label htmlFor="supplier">Yetkazuvchi</Label>
-              <Input id="supplier" placeholder="Yetkazuvchi nomi" {...register('supplier')} />
-            </div>
+            {watchSupplier && watchSupplier !== 'none' && (
+              <div className="space-y-2">
+                <Label htmlFor="paidAmount">Darhol to'langan summa (naqd)</Label>
+                <Input
+                  id="paidAmount"
+                  type="number"
+                  step="any"
+                  min={0}
+                  max={grandTotal || undefined}
+                  placeholder="0"
+                  {...register('paidAmount')}
+                />
+                {errors.paidAmount && <p className="text-xs text-destructive">{errors.paidAmount.message}</p>}
+                <p className="text-xs text-muted-foreground">
+                  To'ldirilsa, shu summa kassadan darhol yechiladi va faqat qoldiq qarzga yoziladi. Bo'sh qoldirilsa, jami summa qarzga yoziladi.
+                </p>
+              </div>
+            )}
 
             {/* Notes */}
             <div className="space-y-2">
@@ -454,14 +769,42 @@ export default function ProductLotsPage() {
 
             <DialogFooter className="gap-2 sm:gap-0">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Bekor qilish</Button>
-              <Button type="submit" disabled={createLotMutation.isPending}>
-                {createLotMutation.isPending && <LoadingSpinner size="sm" className="mr-2 h-4 w-4" />}
+              <Button type="submit" disabled={createBatchMutation.isPending}>
+                {createBatchMutation.isPending && <LoadingSpinner size="sm" className="mr-2 h-4 w-4" />}
                 Kirimni saqlash
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Quick Create Product Dialog (stacked on top of the lot dialog) */}
+      <QuickCreateProductDialog
+        open={quickCreateOpen}
+        onOpenChange={(open) => {
+          setQuickCreateOpen(open);
+          if (!open) setQuickCreateRowIndex(null);
+        }}
+        initialName={quickCreateInitialName}
+        onCreated={handleProductCreated}
+      />
+
+      {/* Quick Create Supplier Dialog (stacked on top of the lot dialog) */}
+      <QuickCreateSupplierDialog
+        open={quickCreateSupplierOpen}
+        onOpenChange={setQuickCreateSupplierOpen}
+        initialName={quickCreateSupplierInitialName}
+        onCreated={handleSupplierCreated}
+      />
+
+      {/* Edit existing purchase invoice ("kirim hujjati") */}
+      <EditLotBatchDialog
+        open={editBatchNumber !== null}
+        batchNumber={editBatchNumber}
+        onOpenChange={(open) => { if (!open) setEditBatchNumber(null); }}
+        products={products}
+        units={units || []}
+      />
     </div>
   );
 }

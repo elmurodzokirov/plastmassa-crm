@@ -5,6 +5,11 @@ import { Customer, CustomerDocument } from '../customers/schemas/customer.schema
 import { Payment, PaymentDocument } from '../payments/schemas/payment.schema';
 import { Expense, ExpenseDocument } from '../expenses/schemas/expense.schema';
 import { Order, OrderDocument } from '../orders/schemas/order.schema';
+import { Supplier, SupplierDocument } from '../suppliers/schemas/supplier.schema';
+import {
+  SupplierPayment,
+  SupplierPaymentDocument,
+} from '../suppliers/schemas/supplier-payment.schema';
 
 @Injectable()
 export class FinanceService {
@@ -17,6 +22,10 @@ export class FinanceService {
     private readonly expenseModel: Model<ExpenseDocument>,
     @InjectModel(Order.name)
     private readonly orderModel: Model<OrderDocument>,
+    @InjectModel(Supplier.name)
+    private readonly supplierModel: Model<SupplierDocument>,
+    @InjectModel(SupplierPayment.name)
+    private readonly supplierPaymentModel: Model<SupplierPaymentDocument>,
   ) {}
 
   async getDebtors() {
@@ -35,17 +44,34 @@ export class FinanceService {
     }));
   }
 
+  async getCreditors() {
+    const suppliers = await this.supplierModel
+      .find({ currentDebt: { $gt: 0 } })
+      .select('name phone currentDebt')
+      .sort({ currentDebt: -1 })
+      .exec();
+
+    return suppliers.map((supplier) => ({
+      _id: supplier._id,
+      name: supplier.name,
+      phone: supplier.phone,
+      totalDebt: supplier.currentDebt,
+    }));
+  }
+
   async getCashFlow(dateFrom: string, dateTo: string) {
     const { from, to } = this.buildDateRange(dateFrom, dateTo);
 
-    const [initialIncome, paymentIncome, expenseTotal] = await Promise.all([
-      this.getInitialOrderIncomeTotal(from, to),
-      this.getPaymentIncomeTotal(from, to),
-      this.getExpenseTotal(from, to),
-    ]);
+    const [initialIncome, paymentIncome, expenseTotal, supplierPaymentTotal] =
+      await Promise.all([
+        this.getInitialOrderIncomeTotal(from, to),
+        this.getPaymentIncomeTotal(from, to),
+        this.getExpenseTotal(from, to),
+        this.getSupplierPaymentTotal(from, to),
+      ]);
 
     const totalIncome = initialIncome + paymentIncome;
-    const totalExpense = expenseTotal;
+    const totalExpense = expenseTotal + supplierPaymentTotal;
     const netProfit = totalIncome - totalExpense;
 
     return {
@@ -63,22 +89,29 @@ export class FinanceService {
     const startOfYear = new Date(Date.UTC(year, 0, 1));
     const endOfYear = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
 
-    const [initialIncomeByMonth, paymentIncomeByMonth, expensesByMonth] =
-      await Promise.all([
-        this.getInitialOrderIncomeByMonth(startOfYear, endOfYear),
-        this.getPaymentIncomeByMonth(startOfYear, endOfYear),
-        this.getExpensesByMonth(startOfYear, endOfYear),
-      ]);
+    const [
+      initialIncomeByMonth,
+      paymentIncomeByMonth,
+      expensesByMonth,
+      supplierPaymentsByMonth,
+    ] = await Promise.all([
+      this.getInitialOrderIncomeByMonth(startOfYear, endOfYear),
+      this.getPaymentIncomeByMonth(startOfYear, endOfYear),
+      this.getExpensesByMonth(startOfYear, endOfYear),
+      this.getSupplierPaymentsByMonth(startOfYear, endOfYear),
+    ]);
 
     const initialIncomeMap = this.mapMonthlyTotals(initialIncomeByMonth);
     const paymentIncomeMap = this.mapMonthlyTotals(paymentIncomeByMonth);
     const expenseMap = this.mapMonthlyTotals(expensesByMonth);
+    const supplierPaymentMap = this.mapMonthlyTotals(supplierPaymentsByMonth);
 
     const months = [];
     for (let month = 1; month <= 12; month++) {
       const income =
         (initialIncomeMap.get(month) || 0) + (paymentIncomeMap.get(month) || 0);
-      const expense = expenseMap.get(month) || 0;
+      const expense =
+        (expenseMap.get(month) || 0) + (supplierPaymentMap.get(month) || 0);
       months.push({
         month,
         income,
@@ -91,30 +124,47 @@ export class FinanceService {
   }
 
   async getSummary() {
-    const [initialRevenue, paymentRevenue, expensesResult, debtResult] =
-      await Promise.all([
-        this.getInitialOrderIncomeTotal(),
-        this.getPaymentIncomeTotal(),
-        this.expenseModel
-          .aggregate([{ $group: { _id: null, total: { $sum: '$amount' } } }])
-          .exec(),
-        this.customerModel
-          .aggregate([
-            { $match: { currentDebt: { $gt: 0 } } },
-            { $group: { _id: null, total: { $sum: '$currentDebt' } } },
-          ])
-          .exec(),
-      ]);
+    const [
+      initialRevenue,
+      paymentRevenue,
+      expensesResult,
+      debtResult,
+      supplierPaymentTotal,
+      creditResult,
+    ] = await Promise.all([
+      this.getInitialOrderIncomeTotal(),
+      this.getPaymentIncomeTotal(),
+      this.expenseModel
+        .aggregate([{ $group: { _id: null, total: { $sum: '$amount' } } }])
+        .exec(),
+      this.customerModel
+        .aggregate([
+          { $match: { currentDebt: { $gt: 0 } } },
+          { $group: { _id: null, total: { $sum: '$currentDebt' } } },
+        ])
+        .exec(),
+      this.getSupplierPaymentTotal(),
+      this.supplierModel
+        .aggregate([
+          { $match: { currentDebt: { $gt: 0 } } },
+          { $group: { _id: null, total: { $sum: '$currentDebt' } } },
+        ])
+        .exec(),
+    ]);
 
     const totalRevenue = initialRevenue + paymentRevenue;
-    const totalExpenses = expensesResult.length > 0 ? expensesResult[0].total : 0;
+    const totalExpenses =
+      (expensesResult.length > 0 ? expensesResult[0].total : 0) +
+      supplierPaymentTotal;
     const totalDebt = debtResult.length > 0 ? debtResult[0].total : 0;
+    const totalCredit = creditResult.length > 0 ? creditResult[0].total : 0;
     const netProfit = totalRevenue - totalExpenses;
 
     return {
       totalRevenue,
       totalExpenses,
       totalDebt,
+      totalCredit,
       netProfit,
       cashOnHand: netProfit,
     };
@@ -263,6 +313,42 @@ export class FinanceService {
 
   private async getPaymentIncomeByMonth(from: Date, to: Date) {
     return this.paymentModel
+      .aggregate([
+        { $match: { createdAt: { $gte: from, $lte: to } } },
+        {
+          $group: {
+            _id: { $month: '$createdAt' },
+            total: { $sum: '$amount' },
+          },
+        },
+      ])
+      .exec();
+  }
+
+  private async getSupplierPaymentTotal(from?: Date, to?: Date): Promise<number> {
+    const match: Record<string, unknown> = {};
+    if (from || to) {
+      match.createdAt = {};
+      if (from) {
+        (match.createdAt as Record<string, Date>).$gte = from;
+      }
+      if (to) {
+        (match.createdAt as Record<string, Date>).$lte = to;
+      }
+    }
+
+    const result = await this.supplierPaymentModel
+      .aggregate([
+        { $match: match },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ])
+      .exec();
+
+    return result.length > 0 ? result[0].total : 0;
+  }
+
+  private async getSupplierPaymentsByMonth(from: Date, to: Date) {
+    return this.supplierPaymentModel
       .aggregate([
         { $match: { createdAt: { $gte: from, $lte: to } } },
         {

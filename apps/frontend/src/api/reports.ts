@@ -101,6 +101,35 @@ export interface AttendanceReport {
   };
 }
 
+export interface SupplierReconciliationParams {
+  supplier: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface SupplierReconciliationEntry {
+  date: string;
+  type: 'DEBT' | 'PAYMENT';
+  description: string;
+  reference: string;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+export interface SupplierReconciliationReport {
+  supplier: {
+    _id: string;
+    name: string;
+    phone?: string;
+  };
+  openingBalance: number;
+  closingBalance: number;
+  currentDebt: number;
+  entries: SupplierReconciliationEntry[];
+  period: { from?: string; to?: string };
+}
+
 // ── API Client ───────────────────────────────────────────────────────
 
 export const reportsApi = {
@@ -115,4 +144,9 @@ export const reportsApi = {
 
   getAttendanceReport: (params: AttendanceReportParams) =>
     client.get<AttendanceReport>('/reports/attendance', { params }).then((r) => r.data),
+
+  getSupplierReconciliation: (params: SupplierReconciliationParams) =>
+    client
+      .get<SupplierReconciliationReport>('/reports/supplier-reconciliation', { params })
+      .then((r) => r.data),
 };

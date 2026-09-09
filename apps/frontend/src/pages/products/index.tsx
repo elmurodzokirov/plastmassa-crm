@@ -16,15 +16,20 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  AlertTriangle,
+  Wallet,
+  Download,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Product, Unit } from '@plastmassa/shared';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, exportToCsv, cn } from '@/lib/utils';
 import {
   useProducts,
   useCreateProduct,
   useUpdateProduct,
   useDeleteProduct,
+  useProductStats,
+  useProductCategories,
 } from '@/hooks/use-products';
 import { useUnits } from '@/hooks/use-units';
 import { ProductQuery, ProductUpsertInput } from '@/api/products';
@@ -84,6 +89,8 @@ const productSchema = z.object({
   price: z.coerce.number().min(0, 'Narx 0 dan kam bo\'lmasligi kerak'),
   costPrice: z.coerce.number().min(0).optional(),
   pieceRate: z.coerce.number().min(0, 'Ishbay narxi 0 dan kam bo\'lmasligi kerak').optional(),
+  category: z.string().optional(),
+  minStock: z.coerce.number().min(0, 'Minimal zaxira 0 dan kam bo\'lmasligi kerak').optional(),
   salesUnits: z.array(salesUnitSchema).optional(),
 });
 
@@ -95,6 +102,8 @@ const EMPTY_PRODUCT_FORM_VALUES: ProductFormData = {
   price: 0,
   costPrice: 0,
   pieceRate: 0,
+  category: '',
+  minStock: 0,
   salesUnits: [],
 };
 
@@ -120,6 +129,8 @@ export default function ProductsPage() {
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder] = useState<'asc' | 'desc'>('desc');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [lowStockFilter, setLowStockFilter] = useState(false);
   const limit = 10;
 
   const debouncedSearch = useDebounce(search, 300);
@@ -136,12 +147,16 @@ export default function ProductsPage() {
     page,
     limit,
     ...(debouncedSearch && { search: debouncedSearch }),
+    ...(categoryFilter !== 'all' && { category: categoryFilter }),
+    ...(lowStockFilter && { lowStock: true }),
     sortBy,
     sortOrder,
   };
 
   const { data: productsData, isLoading: isLoadingProducts } = useProducts(queryParams);
   const { data: units, isLoading: isLoadingUnits } = useUnits();
+  const { data: productStats } = useProductStats();
+  const { data: categories } = useProductCategories();
   const createMutation = useCreateProduct();
   const updateMutation = useUpdateProduct();
   const deleteMutation = useDeleteProduct();
@@ -210,6 +225,27 @@ export default function ProductsPage() {
     return `${product.salesUnits.length} ta`;
   };
 
+  const isLowStock = (product: Product): boolean => {
+    return !!product.minStock && product.minStock > 0 && product.currentStock <= product.minStock;
+  };
+
+  const handleExportCsv = useCallback(() => {
+    exportToCsv(
+      `mahsulotlar-${new Date().toISOString().slice(0, 10)}.csv`,
+      ['Nomi', 'Kategoriya', 'Birlik', 'Zaxira', 'Minimal zaxira', 'Narx', 'Tannarx', 'Holat'],
+      products.map((p) => [
+        p.name,
+        p.category || '',
+        getUnitSymbol(p),
+        p.currentStock,
+        p.minStock || 0,
+        p.price,
+        (p as any).costPrice || 0,
+        p.isActive ? 'Faol' : 'Nofaol',
+      ]),
+    );
+  }, [products]);
+
   const openCreateDialog = useCallback(() => {
     setEditingProduct(null);
     reset(EMPTY_PRODUCT_FORM_VALUES);
@@ -240,6 +276,8 @@ export default function ProductsPage() {
         price: product.price,
         costPrice: (product as any).costPrice || 0,
         pieceRate: (product as any).pieceRate || 0,
+        category: product.category || '',
+        minStock: product.minStock || 0,
         salesUnits,
       });
       resetImageState();
@@ -284,6 +322,8 @@ export default function ProductsPage() {
           price: data.price,
           costPrice: data.costPrice || 0,
           pieceRate: data.pieceRate || 0,
+          category: data.category || undefined,
+          minStock: data.minStock || 0,
           salesUnits: data.salesUnits || [],
           image: selectedImageFile,
           removeImage: !!editingProduct && !selectedImageFile && removeImage,
@@ -348,14 +388,20 @@ export default function ProductsPage() {
             Jami {totalCount} ta mahsulot
           </p>
         </div>
-        <Button onClick={openCreateDialog} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Yangi mahsulot
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExportCsv} className="gap-2">
+            <Download className="h-4 w-4" />
+            Eksport
+          </Button>
+          <Button onClick={openCreateDialog} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Yangi mahsulot
+          </Button>
+        </div>
       </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           title="Jami mahsulotlar"
           value={isLoadingProducts ? '...' : totalCount}
@@ -379,6 +425,22 @@ export default function ProductsPage() {
           iconColor="text-green-400"
           iconBg="bg-green-500/20"
           index={2}
+        />
+        <StatCard
+          title="Ombor qiymati"
+          value={productStats ? formatCurrency(productStats.inventoryValue) : '...'}
+          icon={Wallet}
+          iconColor="text-emerald-400"
+          iconBg="bg-emerald-500/20"
+          index={3}
+        />
+        <StatCard
+          title="Kam qolgan mahsulotlar"
+          value={productStats ? productStats.lowStockCount : '...'}
+          icon={AlertTriangle}
+          iconColor="text-amber-400"
+          iconBg="bg-amber-500/20"
+          index={4}
         />
       </div>
 
@@ -418,6 +480,35 @@ export default function ProductsPage() {
             <SelectItem value="price">Narx bo'yicha</SelectItem>
           </SelectContent>
         </Select>
+        <Select
+          value={categoryFilter}
+          onValueChange={(value) => {
+            setCategoryFilter(value);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="w-full sm:w-48">
+            <SelectValue placeholder="Kategoriya" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Barcha kategoriyalar</SelectItem>
+            {categories?.map((c) => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          type="button"
+          variant={lowStockFilter ? 'default' : 'outline'}
+          onClick={() => {
+            setLowStockFilter((v) => !v);
+            setPage(1);
+          }}
+          className="gap-2"
+        >
+          <AlertTriangle className="h-4 w-4" />
+          Kam qolganlar
+        </Button>
       </motion.div>
 
       {/* Products Table */}
@@ -431,6 +522,7 @@ export default function ProductsPage() {
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead>Nomi</TableHead>
+              <TableHead className="hidden md:table-cell">Kategoriya</TableHead>
               <TableHead className="hidden sm:table-cell">O'lchov birligi</TableHead>
               <TableHead>Zaxira</TableHead>
               <TableHead className="hidden md:table-cell">Narx</TableHead>
@@ -462,10 +554,18 @@ export default function ProductsPage() {
                       </button>
                     </div>
                   </TableCell>
+                  <TableCell className="hidden md:table-cell text-muted-foreground">
+                    {product.category || '-'}
+                  </TableCell>
                   <TableCell className="hidden sm:table-cell text-muted-foreground">
                     {unitSymbol}
                   </TableCell>
-                  <TableCell className="font-medium">{product.currentStock}</TableCell>
+                  <TableCell className="font-medium">
+                    <span className={cn('inline-flex items-center gap-1.5', isLowStock(product) && 'text-amber-400')}>
+                      {product.currentStock}
+                      {isLowStock(product) && <AlertTriangle className="h-3.5 w-3.5" />}
+                    </span>
+                  </TableCell>
                   <TableCell className="hidden md:table-cell text-muted-foreground">
                     {formatCurrency(product.price)}
                   </TableCell>
@@ -732,6 +832,39 @@ export default function ProductsPage() {
                   </p>
                   {errors.pieceRate && (
                     <p className="text-xs text-destructive">{errors.pieceRate.message}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="category">Kategoriya</Label>
+                  <Input
+                    id="category"
+                    list="product-categories"
+                    placeholder="Masalan: Idishlar"
+                    {...register('category')}
+                  />
+                  <datalist id="product-categories">
+                    {categories?.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="minStock">Minimal zaxira</Label>
+                  <Input
+                    id="minStock"
+                    type="number"
+                    min={0}
+                    step="any"
+                    placeholder="0"
+                    {...register('minStock')}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Zaxira shu miqdordan pastga tushsa, ogohlantirish ko'rsatiladi (0 - o'chirilgan)
+                  </p>
+                  {errors.minStock && (
+                    <p className="text-xs text-destructive">{errors.minStock.message}</p>
                   )}
                 </div>
               </TabsContent>

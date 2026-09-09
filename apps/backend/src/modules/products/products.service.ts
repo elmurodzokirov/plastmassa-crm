@@ -60,6 +60,8 @@ export class ProductsService {
       limit = 20,
       search,
       isActive,
+      category,
+      lowStock,
       sortBy = 'createdAt',
       sortOrder = 'desc',
     } = query;
@@ -72,6 +74,19 @@ export class ProductsService {
 
     if (isActive !== undefined) {
       filter.isActive = isActive;
+    }
+
+    if (category) {
+      filter.category = category;
+    }
+
+    if (lowStock) {
+      filter.$expr = {
+        $and: [
+          { $gt: ['$minStock', 0] },
+          { $lte: ['$currentStock', '$minStock'] },
+        ],
+      };
     }
 
     const skip = (page - 1) * limit;
@@ -199,6 +214,51 @@ export class ProductsService {
     ).exec();
     if (!product) throw new NotFoundException('Mahsulot topilmadi');
     return product;
+  }
+
+  async getStats() {
+    const [agg] = await this.productModel.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalProducts: { $sum: 1 },
+          activeProducts: { $sum: { $cond: ['$isActive', 1, 0] } },
+          totalStock: { $sum: '$currentStock' },
+          inventoryValue: {
+            $sum: { $multiply: ['$currentStock', '$costPrice'] },
+          },
+          lowStockCount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $gt: ['$minStock', 0] },
+                    { $lte: ['$currentStock', '$minStock'] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]);
+
+    return {
+      totalProducts: agg?.totalProducts || 0,
+      activeProducts: agg?.activeProducts || 0,
+      totalStock: agg?.totalStock || 0,
+      inventoryValue: agg?.inventoryValue || 0,
+      lowStockCount: agg?.lowStockCount || 0,
+    };
+  }
+
+  async getCategories(): Promise<string[]> {
+    const categories = await this.productModel
+      .distinct('category', { category: { $nin: [null, ''] } })
+      .exec();
+    return categories.sort();
   }
 
   async updateStock(id: string, quantity: number, costPerUnit?: number): Promise<ProductDocument> {

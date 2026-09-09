@@ -7,6 +7,7 @@ import {
   StockMovementSchema,
 } from './schemas/stock-movement.schema';
 import { ProductsModule } from '../products/products.module';
+import { ProductLotsModule } from '../product-lots/product-lots.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { ProductsModule } from '../products/products.module';
       { name: StockMovement.name, schema: StockMovementSchema },
     ]),
     ProductsModule,
+    ProductLotsModule,
   ],
   controllers: [StockController],
   providers: [StockService],

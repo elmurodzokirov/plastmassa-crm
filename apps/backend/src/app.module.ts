@@ -23,6 +23,10 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { CustomerPricesModule } from './modules/customer-prices/customer-prices.module';
 import { ReturnsModule } from './modules/returns/returns.module';
+import { MaterialsModule } from './modules/materials/materials.module';
+import { MaterialLotsModule } from './modules/material-lots/material-lots.module';
+import { RecipesModule } from './modules/recipes/recipes.module';
+import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseTransformInterceptor } from './common/interceptors/response-transform.interceptor';
 import { AuditLogMiddleware } from './common/middleware/audit-log.middleware';
@@ -67,6 +71,10 @@ import { AuditLogMiddleware } from './common/middleware/audit-log.middleware';
     SettingsModule,
     CustomerPricesModule,
     ReturnsModule,
+    MaterialsModule,
+    MaterialLotsModule,
+    RecipesModule,
+    SuppliersModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: HttpExceptionFilter },

@@ -52,6 +52,16 @@ export class CreateProductDto {
   costPrice?: number;
 
   @IsOptional()
+  @IsString()
+  category?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  minStock?: number;
+
+  @IsOptional()
   @Transform(({ value }) => {
     if (value === undefined || value === null || value === '') {
       return undefined;

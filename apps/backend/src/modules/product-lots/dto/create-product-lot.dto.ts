@@ -22,9 +22,14 @@ export class CreateProductLotDto {
   @IsIn(['PURCHASE', 'PRODUCTION'])
   source?: 'PURCHASE' | 'PRODUCTION';
 
-  @IsString()
+  @IsMongoId()
   @IsOptional()
   supplier?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  paidAmount?: number;
 
   @IsString()
   @IsOptional()

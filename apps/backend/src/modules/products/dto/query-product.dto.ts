@@ -23,6 +23,15 @@ export class QueryProductDto {
 
   @IsOptional()
   @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  lowStock?: boolean;
+
+  @IsOptional()
+  @IsString()
   sortBy?: string = 'createdAt';
 
   @IsOptional()

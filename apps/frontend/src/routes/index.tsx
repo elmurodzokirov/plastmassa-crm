@@ -15,6 +15,10 @@ const ProductsPage = lazy(() => import('@/pages/products/index'));
 const ProductDetailPage = lazy(() => import('@/pages/products/[id]'));
 const ProductLotsPage = lazy(() => import('@/pages/products/lots'));
 const StockMovementsPage = lazy(() => import('@/pages/stock/movements'));
+const MaterialsPage = lazy(() => import('@/pages/materials/index'));
+const MaterialDetailPage = lazy(() => import('@/pages/materials/[id]'));
+const CalculationsPage = lazy(() => import('@/pages/calculations/index'));
+const SuppliersPage = lazy(() => import('@/pages/suppliers/index'));
 const OrdersPage = lazy(() => import('@/pages/orders/index'));
 const NewOrderPage = lazy(() => import('@/pages/orders/new'));
 const OrderDetailPage = lazy(() => import('@/pages/orders/[id]'));
@@ -66,10 +70,14 @@ export function AppRoutes() {
           <Route path="returns" element={<PermissionRoute permission="returns:read"><ReturnsPage /></PermissionRoute>} />
 
           {/* Ombor */}
+          <Route path="calculations" element={<PermissionRoute permission="products:read"><CalculationsPage /></PermissionRoute>} />
           <Route path="products" element={<PermissionRoute permission="products:read"><ProductsPage /></PermissionRoute>} />
           <Route path="products/lots" element={<PermissionRoute permission="products:read"><ProductLotsPage /></PermissionRoute>} />
           <Route path="products/:id" element={<PermissionRoute permission="products:read"><ProductDetailPage /></PermissionRoute>} />
           <Route path="stock/movements" element={<PermissionRoute permission="stock:read"><StockMovementsPage /></PermissionRoute>} />
+          <Route path="materials" element={<PermissionRoute permission="products:read"><MaterialsPage /></PermissionRoute>} />
+          <Route path="materials/:id" element={<PermissionRoute permission="products:read"><MaterialDetailPage /></PermissionRoute>} />
+          <Route path="suppliers" element={<PermissionRoute permission="products:read"><SuppliersPage /></PermissionRoute>} />
           <Route path="production" element={<PermissionRoute permission="production:read"><ProductionPage /></PermissionRoute>} />
 
           {/* Kadrlar */}

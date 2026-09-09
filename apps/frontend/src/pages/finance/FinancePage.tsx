@@ -18,6 +18,8 @@ import {
   Wallet,
   Receipt,
   PieChart,
+  Truck,
+  Banknote,
 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import {
@@ -28,8 +30,10 @@ import {
   useCashFlow,
   useMonthlyCashFlow,
   useDebtors,
+  useCreditors,
   useProfitAndLoss,
 } from '@/hooks/use-finance';
+import { useCreateSupplierPayment } from '@/hooks/use-suppliers';
 import { toast } from '@/components/ui/use-toast';
 
 import { Button } from '@/components/ui/button';
@@ -123,6 +127,21 @@ const expenseSchema = z.object({
 
 type ExpenseFormData = z.infer<typeof expenseSchema>;
 
+const supplierPaymentSchema = z.object({
+  supplier: z.string().min(1, 'Yetkazib beruvchini tanlang'),
+  amount: z.coerce.number().min(0.01, 'Summani kiriting'),
+  type: z.enum(['CASH', 'TRANSFER', 'CARD']),
+  notes: z.string().optional(),
+});
+
+type SupplierPaymentFormData = z.infer<typeof supplierPaymentSchema>;
+
+const SUPPLIER_PAYMENT_TYPES = [
+  { value: 'CASH', label: 'Naqd' },
+  { value: 'TRANSFER', label: "O'tkazma" },
+  { value: 'CARD', label: 'Karta' },
+];
+
 // ── Helper: get first and last day of current month ───────────────────
 
 function getMonthRange() {
@@ -164,6 +183,9 @@ export default function FinancePage() {
   const [plDateFrom, setPlDateFrom] = useState(defaultRange.dateFrom);
   const [plDateTo, setPlDateTo] = useState(defaultRange.dateTo);
 
+  // ── Supplier payment state ───────────────────────────────────────
+  const [supplierPaymentDialogOpen, setSupplierPaymentDialogOpen] = useState(false);
+
   // ── Queries ───────────────────────────────────────────────────────
 
   const cashFlowParams = useMemo(
@@ -174,6 +196,7 @@ export default function FinancePage() {
   const { data: monthlyCashFlow, isLoading: monthlyLoading } = useMonthlyCashFlow(cfYear);
 
   const { data: debtorsData, isLoading: debtorsLoading } = useDebtors();
+  const { data: creditorsData, isLoading: creditorsLoading } = useCreditors();
 
   const expenseParams = useMemo(() => {
     const params: any = { limit: 50, sortBy: 'date', sortOrder: 'desc' };
@@ -196,11 +219,14 @@ export default function FinancePage() {
   const createExpense = useCreateExpense();
   const updateExpense = useUpdateExpense();
   const deleteExpense = useDeleteExpense();
+  const createSupplierPayment = useCreateSupplierPayment();
 
   // ── Derived data ──────────────────────────────────────────────────
 
   const debtors = Array.isArray(debtorsData) ? debtorsData : [];
   const totalDebt = debtors.reduce((sum, d) => sum + (d.totalDebt || 0), 0);
+  const creditors = Array.isArray(creditorsData) ? creditorsData : [];
+  const totalCredit = creditors.reduce((sum, c) => sum + (c.totalDebt || 0), 0);
   const expenses = expensesData?.items || [];
   const monthlyData = Array.isArray(monthlyCashFlow) ? monthlyCashFlow : [];
 
@@ -278,6 +304,42 @@ export default function FinancePage() {
     [editingExpense, createExpense, updateExpense],
   );
 
+  // ── Supplier payment form ─────────────────────────────────────────
+
+  const supplierPaymentForm = useForm<SupplierPaymentFormData>({
+    resolver: zodResolver(supplierPaymentSchema),
+    defaultValues: { supplier: '', amount: 0, type: 'CASH', notes: '' },
+  });
+
+  const openSupplierPaymentDialog = useCallback(() => {
+    supplierPaymentForm.reset({ supplier: '', amount: 0, type: 'CASH', notes: '' });
+    setSupplierPaymentDialogOpen(true);
+  }, [supplierPaymentForm]);
+
+  const selectedCreditorId = supplierPaymentForm.watch('supplier');
+  const selectedCreditor = creditors.find((c) => c._id === selectedCreditorId);
+
+  const handleSubmitSupplierPayment = useCallback(
+    async (data: SupplierPaymentFormData) => {
+      try {
+        await createSupplierPayment.mutateAsync(data);
+        toast({
+          title: 'Muvaffaqiyatli',
+          description: "Yetkazib beruvchiga to'lov amalga oshirildi",
+          variant: 'success',
+        });
+        setSupplierPaymentDialogOpen(false);
+      } catch {
+        toast({
+          title: 'Xatolik',
+          description: "To'lovni saqlashda xatolik yuz berdi",
+          variant: 'destructive',
+        });
+      }
+    },
+    [createSupplierPayment],
+  );
+
   const openDeleteDialog = useCallback((id: string) => {
     setDeletingExpenseId(id);
     setDeleteDialogOpen(true);
@@ -326,6 +388,7 @@ export default function FinancePage() {
           <TabsList>
             <TabsTrigger value="cashflow">Kassa</TabsTrigger>
             <TabsTrigger value="debtors">Qarzdorlar</TabsTrigger>
+            <TabsTrigger value="creditors">Kreditorlar</TabsTrigger>
             <TabsTrigger value="expenses">Xarajatlar</TabsTrigger>
             <TabsTrigger value="pnl">Foyda va Zarar</TabsTrigger>
           </TabsList>
@@ -338,26 +401,32 @@ export default function FinancePage() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.1 }}
-            className="flex flex-col sm:flex-row items-start sm:items-end gap-3"
+            className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-3"
           >
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Boshlanish sana</Label>
-              <Input
-                type="date"
-                value={cfDateFrom}
-                onChange={(e) => setCfDateFrom(e.target.value)}
-                className="h-9 rounded-xl text-xs"
-              />
+            <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Boshlanish sana</Label>
+                <Input
+                  type="date"
+                  value={cfDateFrom}
+                  onChange={(e) => setCfDateFrom(e.target.value)}
+                  className="h-9 rounded-xl text-xs"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Tugash sana</Label>
+                <Input
+                  type="date"
+                  value={cfDateTo}
+                  onChange={(e) => setCfDateTo(e.target.value)}
+                  className="h-9 rounded-xl text-xs"
+                />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Tugash sana</Label>
-              <Input
-                type="date"
-                value={cfDateTo}
-                onChange={(e) => setCfDateTo(e.target.value)}
-                className="h-9 rounded-xl text-xs"
-              />
-            </div>
+            <Button onClick={openSupplierPaymentDialog} className="gap-2 rounded-xl shrink-0">
+              <Banknote className="h-4 w-4" />
+              Yetkazib beruvchiga to'lov
+            </Button>
           </motion.div>
 
           {/* Stat Cards */}
@@ -548,6 +617,98 @@ export default function FinancePage() {
                         </TableRow>
                       );
                     })}
+                </TableBody>
+              </Table>
+            </div>
+          </DataTableWrapper>
+        </TabsContent>
+
+        {/* ── TAB: Kreditorlar (Creditors / suppliers we owe) ──────────── */}
+        <TabsContent value="creditors" className="space-y-6">
+          {!creditorsLoading && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <StatCard
+                title="Jami qarzimiz"
+                value={formatCurrency(totalCredit)}
+                icon={Wallet}
+                iconColor="text-red-400"
+                iconBg="bg-red-500/20"
+                index={0}
+              />
+              <StatCard
+                title="Qarzdor yetkazib beruvchilar"
+                value={creditors.length}
+                icon={Truck}
+                iconColor="text-yellow-400"
+                iconBg="bg-yellow-500/20"
+                index={1}
+              />
+            </div>
+          )}
+
+          <DataTableWrapper
+            isLoading={creditorsLoading}
+            isEmpty={creditors.length === 0}
+            emptyTitle="Kreditorlar topilmadi"
+            emptyDescription="Hozircha hech qanday yetkazib beruvchiga qarzimiz mavjud emas"
+          >
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-border/50 hover:bg-transparent">
+                    <TableHead className="min-w-[180px]">Yetkazib beruvchi</TableHead>
+                    <TableHead className="min-w-[130px]">Telefon</TableHead>
+                    <TableHead className="min-w-[140px]">Qarzimiz</TableHead>
+                    <TableHead className="w-[100px]">Amallar</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {creditors
+                    .sort((a, b) => (b.totalDebt || 0) - (a.totalDebt || 0))
+                    .map((creditor) => (
+                      <TableRow
+                        key={creditor._id}
+                        className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                      >
+                        <TableCell>
+                          <span className="font-medium text-foreground">
+                            {creditor.name || '---'}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {creditor.phone ? (
+                            <span className="flex items-center gap-1.5 text-muted-foreground">
+                              <Phone className="h-3.5 w-3.5" />
+                              {creditor.phone}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">---</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-semibold text-red-400">
+                          {formatCurrency(creditor.totalDebt || 0)}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1.5 rounded-lg text-xs"
+                            onClick={() => {
+                              supplierPaymentForm.reset({
+                                supplier: creditor._id,
+                                amount: 0,
+                                type: 'CASH',
+                                notes: '',
+                              });
+                              setSupplierPaymentDialogOpen(true);
+                            }}
+                          >
+                            <Banknote className="h-3.5 w-3.5" />
+                            To'lov
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                 </TableBody>
               </Table>
             </div>
@@ -1021,6 +1182,123 @@ export default function FinancePage() {
                   <Plus className="h-4 w-4" />
                 )}
                 {editingExpense ? 'Yangilash' : "Qo'shish"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Supplier Payment Dialog ──────────────────────────────────────── */}
+      <Dialog open={supplierPaymentDialogOpen} onOpenChange={setSupplierPaymentDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Yetkazib beruvchiga to'lov</DialogTitle>
+            <DialogDescription>
+              To'lov kassadan amalga oshiriladi va yetkazib beruvchi qarzidan ayiriladi
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            onSubmit={supplierPaymentForm.handleSubmit(handleSubmitSupplierPayment)}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label>Yetkazib beruvchi</Label>
+              <Select
+                value={supplierPaymentForm.watch('supplier')}
+                onValueChange={(value) => supplierPaymentForm.setValue('supplier', value)}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Yetkazib beruvchini tanlang" />
+                </SelectTrigger>
+                <SelectContent>
+                  {creditors.map((c) => (
+                    <SelectItem key={c._id} value={c._id}>
+                      {c.name} — {formatCurrency(c.totalDebt || 0)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {supplierPaymentForm.formState.errors.supplier && (
+                <p className="text-xs text-destructive">
+                  {supplierPaymentForm.formState.errors.supplier.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Summa</Label>
+              <Input
+                type="number"
+                min={0.01}
+                step="any"
+                placeholder="0"
+                className="rounded-xl"
+                {...supplierPaymentForm.register('amount', { valueAsNumber: true })}
+              />
+              {selectedCreditor && (
+                <p className="text-xs text-muted-foreground">
+                  Joriy qarz: {formatCurrency(selectedCreditor.totalDebt || 0)}
+                </p>
+              )}
+              {supplierPaymentForm.formState.errors.amount && (
+                <p className="text-xs text-destructive">
+                  {supplierPaymentForm.formState.errors.amount.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>To'lov usuli</Label>
+              <Select
+                value={supplierPaymentForm.watch('type')}
+                onValueChange={(value) =>
+                  supplierPaymentForm.setValue('type', value as 'CASH' | 'TRANSFER' | 'CARD')
+                }
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="To'lov usulini tanlang" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SUPPLIER_PAYMENT_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Izoh</Label>
+              <Textarea
+                placeholder="Qo'shimcha izoh (ixtiyoriy)"
+                className="rounded-xl"
+                {...supplierPaymentForm.register('notes')}
+              />
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSupplierPaymentDialogOpen(false)}
+                disabled={createSupplierPayment.isPending}
+                className="rounded-xl"
+              >
+                Bekor qilish
+              </Button>
+              <Button
+                type="submit"
+                disabled={createSupplierPayment.isPending}
+                className="gap-2 rounded-xl"
+              >
+                {createSupplierPayment.isPending ? (
+                  <LoadingSpinner size="sm" className="h-4 w-4" />
+                ) : (
+                  <Banknote className="h-4 w-4" />
+                )}
+                To'lovni amalga oshirish
               </Button>
             </DialogFooter>
           </form>

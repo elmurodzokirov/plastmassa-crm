@@ -48,4 +48,8 @@ export class CreateUserDto {
   @IsString()
   @IsOptional()
   inactiveReason?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  showInAttendance?: boolean;
 }

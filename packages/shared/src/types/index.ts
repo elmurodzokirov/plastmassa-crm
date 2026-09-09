@@ -106,6 +106,8 @@ export interface Product {
   _id: string;
   name: string;
   imageUrl?: string;
+  category?: string;
+  minStock?: number;
   baseUnit: string | Unit;
   salesUnits: SalesUnit[];
   currentStock: number;
@@ -116,6 +118,131 @@ export interface Product {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProductStats {
+  totalProducts: number;
+  activeProducts: number;
+  totalStock: number;
+  inventoryValue: number;
+  lowStockCount: number;
+}
+
+// Supplier (yetkazib beruvchi)
+export interface Supplier {
+  _id: string;
+  name: string;
+  phone?: string;
+  address?: string;
+  currentDebt: number;
+  notes?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SupplierPaymentType = 'CASH' | 'TRANSFER' | 'CARD';
+
+export interface SupplierPayment {
+  _id: string;
+  supplier: string | Supplier;
+  amount: number;
+  type: SupplierPaymentType;
+  notes?: string;
+  createdBy: string | User;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Material (raw materials / xom-ashyo)
+export interface Material {
+  _id: string;
+  name: string;
+  category?: string;
+  baseUnit: string | Unit;
+  currentStock: number;
+  costPrice: number;
+  minStock: number;
+  defaultSupplier?: string | Supplier;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MaterialStats {
+  totalMaterials: number;
+  activeMaterials: number;
+  inventoryValue: number;
+  lowStockCount: number;
+}
+
+export type MaterialLotSource = 'PURCHASE' | 'ADJUSTMENT';
+
+export interface MaterialLotConsumption {
+  lot: string;
+  lotNumber: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+}
+
+export interface MaterialLot {
+  _id: string;
+  material: string | Material;
+  lotNumber: string;
+  quantity: number;
+  unit: string | Unit;
+  unitCost: number;
+  totalCost: number;
+  quantityRemaining: number;
+  source: MaterialLotSource;
+  purchaseQuantity?: number;
+  purchaseUnit?: string | Unit;
+  supplier?: string | Supplier;
+  notes?: string;
+  createdBy: string | User;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Recipe (BOM - Bill of Materials)
+export interface RecipeItem {
+  material: string | Material;
+  quantityPerUnit: number;
+  wastagePercent: number;
+}
+
+export interface Recipe {
+  _id: string;
+  product: string | Product;
+  items: RecipeItem[];
+  laborCostPerUnit: number;
+  overheadPercent: number;
+  version: number;
+  isActive: boolean;
+  notes?: string;
+  createdBy: string | User;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlannedCostItem {
+  material: string;
+  materialName: string;
+  quantityPerUnit: number;
+  wastagePercent: number;
+  unitCost: number;
+  cost: number;
+}
+
+export interface PlannedCostBreakdown {
+  recipeId: string;
+  version: number;
+  items: PlannedCostItem[];
+  materialCost: number;
+  laborCost: number;
+  overheadCost: number;
+  totalCost: number;
 }
 
 export interface SalesUnit {
@@ -144,8 +271,15 @@ export interface Order {
   deliveryNotes?: string;
   notes?: string;
   createdBy: string | User;
+  statusHistory?: OrderStatusHistoryEntry[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface OrderStatusHistoryEntry {
+  status: OrderStatus;
+  changedBy: string | User;
+  changedAt: string;
 }
 
 export interface OrderItem {
@@ -211,12 +345,13 @@ export interface StockMovement {
 export type StockMovementType = 'IN' | 'OUT' | 'ADJUSTMENT';
 
 // ProductLot (Sprint 4)
-export type ProductLotSource = 'PURCHASE' | 'PRODUCTION';
+export type ProductLotSource = 'PURCHASE' | 'PRODUCTION' | 'ADJUSTMENT';
 
 export interface ProductLot {
   _id: string;
   product: string | Product;
   lotNumber: string;
+  batchNumber?: string;
   quantity: number;
   unit: string | Unit;
   unitCost: number;
@@ -226,7 +361,7 @@ export interface ProductLot {
   productionLog?: string | ProductionLog;
   purchaseQuantity?: number;
   purchaseUnit?: string | Unit;
-  supplier?: string;
+  supplier?: string | Supplier;
   notes?: string;
   createdBy: string | User;
   createdAt: string;

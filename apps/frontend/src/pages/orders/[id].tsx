@@ -23,6 +23,8 @@ import {
   Clock,
   Hash,
   RotateCcw,
+  History,
+  Undo2,
 } from 'lucide-react';
 import type { Customer, User as UserType, Payment, PaymentMethodType, Return as ReturnEntity } from '@plastmassa/shared';
 import { cn, formatCurrency } from '@/lib/utils';
@@ -719,6 +721,56 @@ export default function OrderDetailPage() {
             )}
           </motion.div>
 
+          {/* Status Change History */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.22 }}
+            className="bg-card/60 backdrop-blur-xl border border-border/50 rounded-2xl p-6"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <History className="h-5 w-5 text-blue-400" />
+              <h2 className="text-lg font-semibold text-foreground">
+                Holat tarixi
+              </h2>
+            </div>
+
+            {!order.statusHistory || order.statusHistory.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-sm text-muted-foreground">
+                  Holat tarixi mavjud emas
+                </p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Sana</TableHead>
+                    <TableHead>Holat</TableHead>
+                    <TableHead>Kim</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {order.statusHistory.map((entry, index) => (
+                    <TableRow key={index}>
+                      <TableCell className="text-muted-foreground">
+                        {format(new Date(entry.changedAt), 'dd.MM.yyyy HH:mm')}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={(STATUS_MAP[entry.status] || { variant: 'secondary' as const }).variant}>
+                          {STATUS_MAP[entry.status]?.label || entry.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {getCreatedByName(entry.changedBy)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </motion.div>
+
           {canReadReturns && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -962,15 +1014,26 @@ export default function OrderDetailPage() {
                 )}
 
                 {order.status === 'CONFIRMED' && (
-                  <Button
-                    variant="destructive"
-                    className="w-full gap-2"
-                    onClick={() => handleStatusChange('CANCELLED')}
-                    disabled={updateStatusMutation.isPending}
-                  >
-                    <XCircle className="h-4 w-4" />
-                    Bekor qilish
-                  </Button>
+                  <>
+                    <Button
+                      variant="outline"
+                      className="w-full gap-2"
+                      onClick={() => handleStatusChange('PENDING')}
+                      disabled={updateStatusMutation.isPending}
+                    >
+                      <Undo2 className="h-4 w-4" />
+                      Qoralamaga qaytarish
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="w-full gap-2"
+                      onClick={() => handleStatusChange('CANCELLED')}
+                      disabled={updateStatusMutation.isPending}
+                    >
+                      <XCircle className="h-4 w-4" />
+                      Bekor qilish
+                    </Button>
+                  </>
                 )}
               </div>
             </motion.div>

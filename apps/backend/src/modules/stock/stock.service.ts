@@ -12,6 +12,7 @@ import {
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { QueryStockMovementDto } from './dto/query-stock-movement.dto';
 import { ProductsService } from '../products/products.service';
+import { ProductLotsService } from '../product-lots/product-lots.service';
 
 @Injectable()
 export class StockService {
@@ -19,33 +20,56 @@ export class StockService {
     @InjectModel(StockMovement.name)
     private readonly stockMovementModel: Model<StockMovementDocument>,
     private readonly productsService: ProductsService,
+    private readonly productLotsService: ProductLotsService,
   ) {}
 
   async create(
     createStockMovementDto: CreateStockMovementDto,
     userId: string,
   ): Promise<StockMovementDocument> {
-    const { type, product, quantity } = createStockMovementDto;
+    const { type, product, quantity, unit, reason } = createStockMovementDto;
 
     if (!product) {
       throw new BadRequestException('Product must be provided');
     }
 
     const productDoc = await this.productsService.findById(product);
+    const unitId = unit || this.getUnitId(productDoc.baseUnit);
+    const fallbackUnitCost = productDoc.costPrice || productDoc.costPerUnit || 0;
 
     if (type === 'OUT') {
-      if (productDoc.currentStock < quantity) {
-        throw new BadRequestException(
-          `Insufficient stock. Available: ${productDoc.currentStock}, Requested: ${quantity}`,
-        );
-      }
+      // Consume from lots FIFO first (throws if insufficient before touching currentStock)
+      await this.productLotsService.consumeFIFO(product, quantity);
       await this.productsService.updateStock(product, -quantity);
     } else if (type === 'IN') {
+      // Every stock increase must be backed by a lot, so FIFO/cost tracking stays consistent
       await this.productsService.updateStock(product, quantity);
+      await this.productLotsService.createAdjustmentLot(
+        product,
+        quantity,
+        unitId,
+        fallbackUnitCost,
+        userId,
+        reason,
+      );
     } else if (type === 'ADJUSTMENT') {
       const currentStock = productDoc.currentStock;
       const diff = quantity - currentStock;
-      await this.productsService.updateStock(product, diff);
+
+      if (diff > 0) {
+        await this.productsService.updateStock(product, diff);
+        await this.productLotsService.createAdjustmentLot(
+          product,
+          diff,
+          unitId,
+          fallbackUnitCost,
+          userId,
+          reason,
+        );
+      } else if (diff < 0) {
+        await this.productLotsService.consumeFIFO(product, Math.abs(diff));
+        await this.productsService.updateStock(product, diff);
+      }
     }
 
     const stockMovement = new this.stockMovementModel({
@@ -54,6 +78,10 @@ export class StockService {
     });
 
     return stockMovement.save();
+  }
+
+  private getUnitId(unit: any): string {
+    return unit?._id ? unit._id.toString() : unit?.toString();
   }
 
   async findAll(query: QueryStockMovementDto) {
