@@ -1,6 +1,20 @@
 import { useState, useMemo } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  Legend,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts';
 import {
   ShoppingCart,
   DollarSign,
@@ -17,6 +31,15 @@ import {
   Truck,
   ArrowDownCircle,
   ArrowUpCircle,
+  ArrowLeft,
+  Wallet,
+  Receipt,
+  Banknote,
+  Shield,
+  TrendingUp,
+  TrendingDown,
+  LineChart,
+  PieChartIcon,
 } from 'lucide-react';
 import { cn, formatCurrency, formatNumber } from '@/lib/utils';
 import {
@@ -27,12 +50,21 @@ import {
   useSupplierReconciliation,
 } from '@/hooks/use-reports';
 import { useSuppliers } from '@/hooks/use-suppliers';
+import { useTransactions, useExpenses, useProfitAndLoss } from '@/hooks/use-finance';
+import { usePayrolls } from '@/hooks/use-payroll';
+import { useDashboardStats, useSalesChart } from '@/hooks/use-dashboard';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -69,7 +101,31 @@ const MONTH_NAMES = [
   'Dekabr',
 ];
 
+const MONTH_SHORT = [
+  'Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyun',
+  'Iyul', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek',
+];
 
+const PIE_COLORS = ['#6366f1', '#8b5cf6', '#06b6d4', '#f59e0b', '#ef4444'];
+
+// ── Helper: revenue chart tooltip ───────────────────────────────────
+
+function ChartTooltip({ active, payload, label }: any): React.ReactNode {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-lg border border-border/80 bg-card px-3 py-2 shadow-lg">
+      <p className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+        {label}
+      </p>
+      {payload.map((entry: any, idx: number) => (
+        <p key={idx} className="text-sm" style={{ color: entry.color }}>
+          <span className="text-muted-foreground">{entry.name}: </span>
+          <span className="font-semibold">{formatCurrency(entry.value)}</span>
+        </p>
+      ))}
+    </div>
+  );
+}
 
 // ── Helper: get month range ──────────────────────────────────────────
 
@@ -85,7 +141,22 @@ function getMonthRange() {
 
 // ── Component ─────────────────────────────────────────────────────────
 
+const DEPARTMENT_TITLES: Record<string, string> = {
+  sotuv: 'Sotuv hisoboti',
+  ombor: 'Ombor hisoboti',
+  kadrlar: 'Kadrlar hisoboti',
+  moliya: 'Moliya hisoboti',
+};
+
+const DEPARTMENT_DEFAULT_TAB: Record<string, string> = {
+  sotuv: 'sales',
+  ombor: 'production',
+  kadrlar: 'attendance',
+  moliya: 'revenue',
+};
+
 export default function ReportsPage() {
+  const { department = 'sotuv' } = useParams<{ department: string }>();
   const now = new Date();
   const defaultRange = getMonthRange();
 
@@ -106,6 +177,25 @@ export default function ReportsPage() {
   const [reconSupplier, setReconSupplier] = useState('');
   const [reconDateFrom, setReconDateFrom] = useState('');
   const [reconDateTo, setReconDateTo] = useState('');
+
+  // ── Cash book (Kassa kitobi) tab state ────────────────────────────
+  const [cbDateFrom, setCbDateFrom] = useState(defaultRange.dateFrom);
+  const [cbDateTo, setCbDateTo] = useState(defaultRange.dateTo);
+
+  // ── Expenses (Xarajatlar ro'yxati) tab state ──────────────────────
+  const [expDateFrom, setExpDateFrom] = useState(defaultRange.dateFrom);
+  const [expDateTo, setExpDateTo] = useState(defaultRange.dateTo);
+
+  // ── Employee payments (Hodimlarga to'lov) tab state ───────────────
+  const [ppYear, setPpYear] = useState(now.getFullYear());
+  const [ppMonth, setPpMonth] = useState(now.getMonth() + 1);
+
+  // ── Revenue (Daromadlar) tab state ────────────────────────────────
+  const [chartPeriod, setChartPeriod] = useState<'year' | 'month' | 'day'>('month');
+  const [chartYear, setChartYear] = useState(now.getFullYear());
+  const [chartMonth, setChartMonth] = useState(now.getMonth() + 1);
+  const [plDateFrom, setPlDateFrom] = useState(defaultRange.dateFrom);
+  const [plDateTo, setPlDateTo] = useState(defaultRange.dateTo);
 
   // ── Queries ────────────────────────────────────────────────────────
 
@@ -138,6 +228,37 @@ export default function ReportsPage() {
   );
   const { data: reconData, isLoading: reconLoading } = useSupplierReconciliation(reconParams);
 
+  const cbParams = useMemo(
+    () => ({ dateFrom: cbDateFrom, dateTo: cbDateTo }),
+    [cbDateFrom, cbDateTo],
+  );
+  const { data: cbData, isLoading: cbLoading } = useTransactions(cbParams);
+
+  const expParams = useMemo(
+    () => ({ dateFrom: expDateFrom, dateTo: expDateTo, limit: 200 }),
+    [expDateFrom, expDateTo],
+  );
+  const { data: expensesData, isLoading: expensesLoading } = useExpenses(expParams);
+
+  const ppParams = useMemo(
+    () => ({ year: ppYear, month: ppMonth, limit: 200 }),
+    [ppYear, ppMonth],
+  );
+  const { data: ppData, isLoading: ppLoading } = usePayrolls(ppParams);
+
+  const { data: stats } = useDashboardStats();
+  const { data: salesChartData, isLoading: salesChartLoading } = useSalesChart(
+    chartPeriod,
+    chartPeriod !== 'year' ? chartYear : undefined,
+    chartPeriod === 'day' ? chartMonth : undefined,
+  );
+
+  const plParams = useMemo(
+    () => ({ dateFrom: plDateFrom, dateTo: plDateTo }),
+    [plDateFrom, plDateTo],
+  );
+  const { data: plData, isLoading: plLoading } = useProfitAndLoss(plParams);
+
   // ── Derived data ───────────────────────────────────────────────────
 
   const salesPeriods = salesData?.byPeriod || [];
@@ -151,6 +272,60 @@ export default function ReportsPage() {
   const stockProducts = stockData?.products || [];
 
   const attEmployees = attData?.employees || [];
+
+  const cbItems = cbData?.items || [];
+
+  const expensesItems = expensesData?.items || [];
+
+  const ppItems = ppData?.items || [];
+
+  const chartItems = useMemo(() => {
+    if (!Array.isArray(salesChartData)) return [];
+    return salesChartData.map((d) => ({
+      name: chartPeriod === 'year' ? String(d.year)
+        : chartPeriod === 'month' ? MONTH_SHORT[(d.month || 1) - 1]
+        : String(d.day || ''),
+      savdo: d.totalSales,
+      daromad: d.grossProfit,
+      buyurtmalar: d.orderCount,
+    }));
+  }, [salesChartData, chartPeriod]);
+
+  // Pie chart: savdo vs daromad (jami)
+  const pieData = useMemo(() => {
+    if (!chartItems.length) return [];
+    const totalSales = chartItems.reduce((s, i) => s + i.savdo, 0);
+    const totalProfit = chartItems.reduce((s, i) => s + i.daromad, 0);
+    const totalCost = totalSales - totalProfit;
+    if (totalSales === 0) return [];
+    return [
+      { name: 'Daromad', value: totalProfit },
+      { name: 'Tannarx', value: totalCost },
+    ];
+  }, [chartItems]);
+
+  const monthlyNetProfit = useMemo(() => {
+    if (!stats) return 0;
+    return (stats.monthlyRevenue || 0) - (stats.monthlyExpenses || 0);
+  }, [stats]);
+
+  const yearOptions = useMemo(() => {
+    const years: number[] = [];
+    for (let y = now.getFullYear(); y >= now.getFullYear() - 4; y--) years.push(y);
+    return years;
+  }, []);
+
+  const chartSubtitle = useMemo(() => {
+    if (chartPeriod === 'year') return 'Yillar kesimida';
+    if (chartPeriod === 'month') return `${chartYear}-yil`;
+    return `${MONTH_NAMES[(chartMonth || 1) - 1]} ${chartYear}`;
+  }, [chartPeriod, chartYear, chartMonth]);
+
+  const getPayrollUserName = (user: any): string => {
+    if (!user) return '-';
+    if (typeof user === 'string') return user;
+    return user.fullName || '-';
+  };
 
   // ── Attendance navigation ──────────────────────────────────────────
 
@@ -172,6 +347,26 @@ export default function ReportsPage() {
     }
   };
 
+  // ── Employee payments navigation ────────────────────────────────────
+
+  const ppGoToPrevMonth = () => {
+    if (ppMonth === 1) {
+      setPpMonth(12);
+      setPpYear((y) => y - 1);
+    } else {
+      setPpMonth((m) => m - 1);
+    }
+  };
+
+  const ppGoToNextMonth = () => {
+    if (ppMonth === 12) {
+      setPpMonth(1);
+      setPpYear((y) => y + 1);
+    } else {
+      setPpMonth((m) => m + 1);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -180,26 +375,58 @@ export default function ReportsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <h1 className="text-2xl font-bold text-foreground">Hisobotlar</h1>
+        <Link
+          to="/reports"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Hisobotlar
+        </Link>
+        <h1 className="text-2xl font-bold text-foreground">
+          {DEPARTMENT_TITLES[department] || 'Hisobotlar'}
+        </h1>
       </motion.div>
 
       {/* Tabs */}
-      <Tabs defaultValue="sales" className="space-y-6">
+      <Tabs
+        key={department}
+        defaultValue={DEPARTMENT_DEFAULT_TAB[department] || 'sales'}
+        className="space-y-6"
+      >
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.05 }}
         >
           <TabsList>
-            <TabsTrigger value="sales">Sotuvlar</TabsTrigger>
-            <TabsTrigger value="production">Ishlab chiqarish</TabsTrigger>
-            <TabsTrigger value="stock">Ombor</TabsTrigger>
-            <TabsTrigger value="attendance">Davomat</TabsTrigger>
-            <TabsTrigger value="supplier-recon">Yetkazib beruvchilar</TabsTrigger>
+            {department === 'sotuv' && <TabsTrigger value="sales">Sotuvlar</TabsTrigger>}
+            {department === 'ombor' && (
+              <TabsTrigger value="production">Ishlab chiqarish</TabsTrigger>
+            )}
+            {department === 'ombor' && <TabsTrigger value="stock">Ombor</TabsTrigger>}
+            {department === 'kadrlar' && (
+              <TabsTrigger value="attendance">Davomat</TabsTrigger>
+            )}
+            {department === 'moliya' && (
+              <TabsTrigger value="revenue">Daromadlar</TabsTrigger>
+            )}
+            {department === 'moliya' && (
+              <TabsTrigger value="cash-book">Kassa kitobi</TabsTrigger>
+            )}
+            {department === 'moliya' && (
+              <TabsTrigger value="expenses">Xarajatlar ro'yxati</TabsTrigger>
+            )}
+            {department === 'moliya' && (
+              <TabsTrigger value="payroll-payments">Hodimlarga to'lov</TabsTrigger>
+            )}
+            {department === 'moliya' && (
+              <TabsTrigger value="supplier-recon">Yetkazib beruvchilar</TabsTrigger>
+            )}
+            {department === 'moliya' && <TabsTrigger value="safe">Seyf hisoboti</TabsTrigger>}
           </TabsList>
         </motion.div>
 
-        {/* ── TAB 1: Sales ──────────────────────────────────────────────── */}
+        {/* ── TAB: Sales ──────────────────────────────────────────────── */}
         <TabsContent value="sales" className="space-y-6">
           {/* Filters */}
           <motion.div
@@ -976,6 +1203,725 @@ export default function ReportsPage() {
               </motion.div>
             </>
           ) : null}
+        </TabsContent>
+
+        {/* ── TAB: Daromadlar (Revenue) ──────────────────────────────────── */}
+        <TabsContent value="revenue" className="space-y-6">
+          {/* Joriy oy ko'rsatkichlari */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+          >
+            <StatCard
+              title="Oylik daromad"
+              value={formatCurrency(stats?.monthlyRevenue ?? 0)}
+              icon={TrendingUp}
+              iconColor="text-green-400"
+              iconBg="bg-green-500/20"
+              index={0}
+            />
+            <StatCard
+              title="Sof foyda (joriy oy)"
+              value={formatCurrency(monthlyNetProfit)}
+              icon={monthlyNetProfit >= 0 ? DollarSign : TrendingDown}
+              iconColor={monthlyNetProfit >= 0 ? 'text-green-400' : 'text-red-400'}
+              iconBg={monthlyNetProfit >= 0 ? 'bg-green-500/20' : 'bg-red-500/20'}
+              index={1}
+            />
+          </motion.div>
+
+          {/* Savdo va daromad grafiklari */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.15 }}
+            className="grid grid-cols-1 gap-5 xl:grid-cols-2"
+          >
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <LineChart className="h-5 w-5 text-indigo-400" />
+                    Savdo va daromad
+                  </CardTitle>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Select value={chartPeriod} onValueChange={(v) => setChartPeriod(v as 'year' | 'month' | 'day')}>
+                      <SelectTrigger className="w-[100px] h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="year">Yillar</SelectItem>
+                        <SelectItem value="month">Oylar</SelectItem>
+                        <SelectItem value="day">Kunlar</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {chartPeriod !== 'year' && (
+                      <Select value={String(chartYear)} onValueChange={(v) => setChartYear(Number(v))}>
+                        <SelectTrigger className="w-[80px] h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {yearOptions.map((y) => (
+                            <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {chartPeriod === 'day' && (
+                      <Select value={String(chartMonth)} onValueChange={(v) => setChartMonth(Number(v))}>
+                        <SelectTrigger className="w-[110px] h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MONTH_NAMES.map((name, idx) => (
+                            <SelectItem key={idx} value={String(idx + 1)}>{name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">{chartSubtitle}</p>
+              </CardHeader>
+              <CardContent>
+                {salesChartLoading ? (
+                  <div className="flex items-center justify-center h-[300px]">
+                    <LoadingSpinner size="md" />
+                  </div>
+                ) : chartItems.length === 0 ? (
+                  <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
+                    Ma'lumot topilmadi
+                  </div>
+                ) : (
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartItems} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="gradSavdoRep" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="rgb(99, 102, 241)" stopOpacity={0.15} />
+                            <stop offset="95%" stopColor="rgb(99, 102, 241)" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="gradDaromadRep" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="rgb(16, 185, 129)" stopOpacity={0.15} />
+                            <stop offset="95%" stopColor="rgb(16, 185, 129)" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                        <YAxis
+                          axisLine={false} tickLine={false}
+                          tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                          tickFormatter={(v) => v >= 1e9 ? `${(v/1e9).toFixed(1)}B` : v >= 1e6 ? `${(v/1e6).toFixed(0)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}K` : String(v)}
+                          width={50}
+                        />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
+                        <Area
+                          type="monotone"
+                          dataKey="savdo"
+                          name="Savdo"
+                          stroke="rgb(99, 102, 241)"
+                          strokeWidth={2}
+                          fill="url(#gradSavdoRep)"
+                          stackId="1"
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="daromad"
+                          name="Daromad"
+                          stroke="rgb(16, 185, 129)"
+                          strokeWidth={2}
+                          fill="url(#gradDaromadRep)"
+                          stackId="2"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <PieChartIcon className="h-5 w-5 text-purple-400" />
+                  Savdo tarkibi
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">{chartSubtitle}</p>
+              </CardHeader>
+              <CardContent>
+                {salesChartLoading ? (
+                  <div className="flex items-center justify-center h-[300px]">
+                    <LoadingSpinner size="md" />
+                  </div>
+                ) : pieData.length === 0 ? (
+                  <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
+                    Ma'lumot topilmadi
+                  </div>
+                ) : (
+                  <div className="h-[300px] flex items-center justify-center">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={70}
+                          outerRadius={110}
+                          paddingAngle={2}
+                          dataKey="value"
+                          strokeWidth={0}
+                        >
+                          {pieData.map((_entry, index) => (
+                            <Cell key={index} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value: number) => formatCurrency(value)}
+                          contentStyle={{
+                            borderRadius: '8px',
+                            border: '1px solid hsl(var(--border))',
+                            background: 'hsl(var(--card))',
+                            fontSize: '13px',
+                          }}
+                        />
+                        <Legend
+                          iconType="circle"
+                          iconSize={8}
+                          layout="vertical"
+                          align="right"
+                          verticalAlign="middle"
+                          wrapperStyle={{ fontSize: '13px', paddingLeft: '16px' }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Davr bo'yicha daromad va xarajat (Foyda-zarar) */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+            className="space-y-4"
+          >
+            <h3 className="text-base font-semibold text-foreground">
+              Davr bo'yicha daromad va xarajat
+            </h3>
+            <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Boshlanish sana</Label>
+                <Input
+                  type="date"
+                  value={plDateFrom}
+                  onChange={(e) => setPlDateFrom(e.target.value)}
+                  className="h-9 rounded-xl text-xs"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Tugash sana</Label>
+                <Input
+                  type="date"
+                  value={plDateTo}
+                  onChange={(e) => setPlDateTo(e.target.value)}
+                  className="h-9 rounded-xl text-xs"
+                />
+              </div>
+            </div>
+
+            {plLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <LoadingSpinner size="lg" />
+              </div>
+            ) : plData ? (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <StatCard
+                    title="Jami daromad"
+                    value={formatCurrency(plData.totalRevenue || 0)}
+                    icon={TrendingUp}
+                    iconColor="text-green-400"
+                    iconBg="bg-green-500/20"
+                    index={0}
+                  />
+                  <StatCard
+                    title="Jami xarajat"
+                    value={formatCurrency(plData.totalExpenses || 0)}
+                    icon={TrendingDown}
+                    iconColor="text-red-400"
+                    iconBg="bg-red-500/20"
+                    index={1}
+                  />
+                  <StatCard
+                    title="Sof foyda"
+                    value={formatCurrency(plData.netProfit || 0)}
+                    icon={BarChart3}
+                    iconColor="text-indigo-400"
+                    iconBg="bg-indigo-500/20"
+                    index={2}
+                  />
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                    <Receipt className="h-4 w-4 text-green-400" />
+                    Mahsulot bo'yicha daromad
+                  </h4>
+                  <DataTableWrapper
+                    isEmpty={!plData.revenueByProduct || plData.revenueByProduct.length === 0}
+                    emptyTitle="Ma'lumot topilmadi"
+                    emptyDescription="Bu davr uchun mahsulot bo'yicha daromad mavjud emas"
+                  >
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="border-b border-border/50 hover:bg-transparent">
+                            <TableHead className="min-w-[200px]">Mahsulot</TableHead>
+                            <TableHead className="min-w-[120px]">Miqdori</TableHead>
+                            <TableHead className="min-w-[150px]">Jami summa</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {(plData.revenueByProduct || []).map((rp, idx) => (
+                            <TableRow
+                              key={idx}
+                              className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                            >
+                              <TableCell className="font-medium text-foreground">
+                                {rp.name || '---'}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {rp.quantity ?? '---'}
+                              </TableCell>
+                              <TableCell className="font-semibold text-green-400">
+                                {formatCurrency(rp.total || 0)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </DataTableWrapper>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                    <PieChartIcon className="h-4 w-4 text-red-400" />
+                    Kategoriya bo'yicha xarajatlar
+                  </h4>
+                  <DataTableWrapper
+                    isEmpty={!plData.expensesByCategory || plData.expensesByCategory.length === 0}
+                    emptyTitle="Ma'lumot topilmadi"
+                    emptyDescription="Bu davr uchun kategoriya bo'yicha xarajat mavjud emas"
+                  >
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="border-b border-border/50 hover:bg-transparent">
+                            <TableHead className="min-w-[180px]">Kategoriya</TableHead>
+                            <TableHead className="min-w-[100px]">Soni</TableHead>
+                            <TableHead className="min-w-[150px]">Jami summa</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {(plData.expensesByCategory || []).map((ec, idx) => (
+                            <TableRow
+                              key={idx}
+                              className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                            >
+                              <TableCell>
+                                <Badge variant="secondary">{ec.category || '---'}</Badge>
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {ec.count ?? '---'}
+                              </TableCell>
+                              <TableCell className="font-semibold text-red-400">
+                                {formatCurrency(ec.total || 0)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </DataTableWrapper>
+                </div>
+              </>
+            ) : null}
+          </motion.div>
+        </TabsContent>
+
+        {/* ── TAB: Cash Book (Kassa kitobi) ─────────────────────────────── */}
+        <TabsContent value="cash-book" className="space-y-6">
+          {/* Filters */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            className="flex flex-col sm:flex-row items-start sm:items-end gap-3"
+          >
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Boshlanish sana</Label>
+              <Input
+                type="date"
+                value={cbDateFrom}
+                onChange={(e) => setCbDateFrom(e.target.value)}
+                className="h-9 rounded-xl text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Tugash sana</Label>
+              <Input
+                type="date"
+                value={cbDateTo}
+                onChange={(e) => setCbDateTo(e.target.value)}
+                className="h-9 rounded-xl text-xs"
+              />
+            </div>
+          </motion.div>
+
+          {cbLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <LoadingSpinner size="lg" />
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <StatCard
+                  title="Jami kirim"
+                  value={formatCurrency(cbData?.totalIncome ?? 0)}
+                  icon={ArrowDownCircle}
+                  iconColor="text-green-400"
+                  iconBg="bg-green-500/20"
+                  index={0}
+                />
+                <StatCard
+                  title="Jami chiqim"
+                  value={formatCurrency(cbData?.totalExpense ?? 0)}
+                  icon={ArrowUpCircle}
+                  iconColor="text-red-400"
+                  iconBg="bg-red-500/20"
+                  index={1}
+                />
+                <StatCard
+                  title="Davr oxiridagi qoldiq"
+                  value={formatCurrency(cbData?.closingBalance ?? 0)}
+                  icon={Wallet}
+                  iconColor="text-indigo-400"
+                  iconBg="bg-indigo-500/20"
+                  index={2}
+                />
+              </div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+              >
+                <h3 className="text-base font-semibold text-foreground mb-3">
+                  Kassa operatsiyalari
+                </h3>
+                <DataTableWrapper
+                  isEmpty={cbItems.length === 0}
+                  emptyTitle="Ma'lumot topilmadi"
+                  emptyDescription="Bu davr uchun kassa operatsiyalari mavjud emas"
+                >
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-b border-border/50 hover:bg-transparent">
+                          <TableHead className="min-w-[140px]">Sana</TableHead>
+                          <TableHead className="min-w-[220px]">Tavsif</TableHead>
+                          <TableHead className="min-w-[130px]">Kirim (+)</TableHead>
+                          <TableHead className="min-w-[130px]">Chiqim (-)</TableHead>
+                          <TableHead className="min-w-[140px]">Qoldiq</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {cbItems.map((item) => (
+                          <TableRow
+                            key={item._id}
+                            className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                          >
+                            <TableCell className="text-muted-foreground">
+                              {item.date ? format(new Date(item.date), 'dd.MM.yyyy HH:mm') : '---'}
+                            </TableCell>
+                            <TableCell className="font-medium text-foreground">
+                              {item.title}
+                              {item.subtitle && (
+                                <span className="block text-xs text-muted-foreground font-normal">
+                                  {item.subtitle}
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="font-semibold text-green-400">
+                              {item.direction === 'IN' ? formatCurrency(item.amount) : '-'}
+                            </TableCell>
+                            <TableCell className="font-semibold text-red-400">
+                              {item.direction === 'OUT' ? formatCurrency(item.amount) : '-'}
+                            </TableCell>
+                            <TableCell className="font-semibold text-foreground">
+                              {formatCurrency(item.balance ?? 0)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </DataTableWrapper>
+              </motion.div>
+            </>
+          )}
+        </TabsContent>
+
+        {/* ── TAB: Expenses (Xarajatlar ro'yxati) ───────────────────────── */}
+        <TabsContent value="expenses" className="space-y-6">
+          {/* Filters */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            className="flex flex-col sm:flex-row items-start sm:items-end gap-3"
+          >
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Boshlanish sana</Label>
+              <Input
+                type="date"
+                value={expDateFrom}
+                onChange={(e) => setExpDateFrom(e.target.value)}
+                className="h-9 rounded-xl text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Tugash sana</Label>
+              <Input
+                type="date"
+                value={expDateTo}
+                onChange={(e) => setExpDateTo(e.target.value)}
+                className="h-9 rounded-xl text-xs"
+              />
+            </div>
+          </motion.div>
+
+          {expensesLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <LoadingSpinner size="lg" />
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <StatCard
+                  title="Jami xarajat"
+                  value={formatCurrency(
+                    expensesItems.reduce((sum, e) => sum + (e.amount || 0), 0),
+                  )}
+                  icon={Receipt}
+                  iconColor="text-red-400"
+                  iconBg="bg-red-500/20"
+                  index={0}
+                />
+                <StatCard
+                  title="Xarajatlar soni"
+                  value={expensesItems.length}
+                  icon={BarChart3}
+                  iconColor="text-amber-400"
+                  iconBg="bg-amber-500/20"
+                  index={1}
+                />
+              </div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+              >
+                <h3 className="text-base font-semibold text-foreground mb-3">
+                  Xarajatlar ro'yxati
+                </h3>
+                <DataTableWrapper
+                  isEmpty={expensesItems.length === 0}
+                  emptyTitle="Ma'lumot topilmadi"
+                  emptyDescription="Bu davr uchun xarajatlar mavjud emas"
+                >
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-b border-border/50 hover:bg-transparent">
+                          <TableHead className="min-w-[120px]">Sana</TableHead>
+                          <TableHead className="min-w-[160px]">Kategoriya</TableHead>
+                          <TableHead className="min-w-[200px]">Tavsif</TableHead>
+                          <TableHead className="min-w-[140px]">To'lov usuli</TableHead>
+                          <TableHead className="min-w-[130px]">Summa</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {expensesItems.map((exp) => (
+                          <TableRow
+                            key={exp._id}
+                            className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                          >
+                            <TableCell className="text-muted-foreground">
+                              {exp.date ? format(new Date(exp.date), 'dd.MM.yyyy') : '---'}
+                            </TableCell>
+                            <TableCell className="font-medium text-foreground">
+                              {exp.category}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {exp.description}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {exp.paymentMethod}
+                            </TableCell>
+                            <TableCell className="font-semibold text-red-400">
+                              {formatCurrency(exp.amount || 0)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </DataTableWrapper>
+              </motion.div>
+            </>
+          )}
+        </TabsContent>
+
+        {/* ── TAB: Employee Payments (Hodimlarga to'lov) ────────────────── */}
+        <TabsContent value="payroll-payments" className="space-y-6">
+          {/* Month/Year Selector */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            className="flex items-center justify-center gap-3"
+          >
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={ppGoToPrevMonth}
+              className="h-10 w-10 rounded-xl"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+            <div className="flex items-center gap-2 bg-card/60 backdrop-blur-xl border border-border/50 rounded-xl px-5 py-2.5 min-w-[220px] justify-center">
+              <Banknote className="h-4 w-4 text-indigo-400 shrink-0" />
+              <span className="text-sm font-medium text-foreground">
+                {ppYear}-yil, {MONTH_NAMES[ppMonth - 1]}
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={ppGoToNextMonth}
+              className="h-10 w-10 rounded-xl"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </Button>
+          </motion.div>
+
+          {ppLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <LoadingSpinner size="lg" />
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <StatCard
+                  title="Jami hisoblangan"
+                  value={formatCurrency(
+                    ppItems.reduce((sum, p) => sum + (p.netSalary || 0), 0),
+                  )}
+                  icon={Banknote}
+                  iconColor="text-indigo-400"
+                  iconBg="bg-indigo-500/20"
+                  index={0}
+                />
+                <StatCard
+                  title="Jami to'langan"
+                  value={formatCurrency(
+                    ppItems.reduce((sum, p) => sum + (p.paidAmount || 0), 0),
+                  )}
+                  icon={ArrowUpCircle}
+                  iconColor="text-green-400"
+                  iconBg="bg-green-500/20"
+                  index={1}
+                />
+                <StatCard
+                  title="Jami qoldiq"
+                  value={formatCurrency(
+                    ppItems.reduce((sum, p) => sum + (p.remainingBalance || 0), 0),
+                  )}
+                  icon={Wallet}
+                  iconColor="text-amber-400"
+                  iconBg="bg-amber-500/20"
+                  index={2}
+                />
+              </div>
+
+              <DataTableWrapper
+                isEmpty={ppItems.length === 0}
+                emptyTitle="Ma'lumot topilmadi"
+                emptyDescription="Bu oy uchun to'lov ma'lumotlari mavjud emas"
+              >
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-b border-border/50 hover:bg-transparent">
+                        <TableHead className="min-w-[180px]">Xodim</TableHead>
+                        <TableHead className="min-w-[140px]">Hisoblangan</TableHead>
+                        <TableHead className="min-w-[140px]">To'langan</TableHead>
+                        <TableHead className="min-w-[140px]">Qoldiq</TableHead>
+                        <TableHead className="min-w-[120px]">Holat</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {ppItems.map((p) => (
+                        <TableRow
+                          key={p._id}
+                          className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                        >
+                          <TableCell className="font-medium text-foreground">
+                            {getPayrollUserName(p.user)}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {formatCurrency(p.netSalary || 0)}
+                          </TableCell>
+                          <TableCell className="font-semibold text-green-400">
+                            {formatCurrency(p.paidAmount || 0)}
+                          </TableCell>
+                          <TableCell className="font-semibold text-amber-400">
+                            {formatCurrency(p.remainingBalance || 0)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={p.status === 'PAID' ? 'success' : 'warning'}>
+                              {p.status}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </DataTableWrapper>
+            </>
+          )}
+        </TabsContent>
+
+        {/* ── TAB: Safe (Seyf hisoboti) — placeholder ───────────────────── */}
+        <TabsContent value="safe" className="space-y-6">
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-4">
+              <Shield className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-medium text-foreground">Seyf hisoboti</h3>
+            <p className="mt-1 text-sm text-muted-foreground max-w-sm">
+              Bu hisobot tez orada qo'shiladi
+            </p>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

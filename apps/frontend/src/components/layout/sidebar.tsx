@@ -92,15 +92,17 @@ const navigation: NavigationEntry[] = [
     ],
   },
 
-  // Moliya va hisobotlar
+  // Moliya
   {
     icon: Wallet,
     name: 'Moliya',
     children: [
       { icon: Wallet, name: 'Pul oqimi', path: '/finance', permission: 'finance:read' },
-      { icon: BarChart3, name: 'Hisobotlar', path: '/reports', permission: 'reports:read' },
     ],
   },
+
+  // Hisobotlar
+  { icon: BarChart3, name: 'Hisobotlar', path: '/reports', permission: 'reports:read' },
 
   // Tizim
   {

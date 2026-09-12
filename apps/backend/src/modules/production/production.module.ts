@@ -9,6 +9,7 @@ import { ProductLotsModule } from '../product-lots/product-lots.module';
 import { RecipesModule } from '../recipes/recipes.module';
 import { MaterialsModule } from '../materials/materials.module';
 import { MaterialLotsModule } from '../material-lots/material-lots.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { MaterialLotsModule } from '../material-lots/material-lots.module';
     RecipesModule,
     MaterialsModule,
     MaterialLotsModule,
+    UsersModule,
   ],
   controllers: [ProductionController],
   providers: [ProductionService],

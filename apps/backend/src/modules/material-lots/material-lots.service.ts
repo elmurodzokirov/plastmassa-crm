@@ -137,6 +137,7 @@ export class MaterialLotsService {
   async consumeFIFO(
     materialId: string,
     quantityNeeded: number,
+    options?: { allowShortfall?: boolean },
   ): Promise<MaterialLotConsumptionRecord[]> {
     const lots = await this.materialLotModel
       .find({ material: materialId, quantityRemaining: { $gt: 0 } })
@@ -168,6 +169,13 @@ export class MaterialLotsService {
     }
 
     if (remaining > 0) {
+      if (options?.allowShortfall) {
+        // Not enough raw material in stock — allow the production log to be saved
+        // anyway (mirrors how product sales are allowed to oversell). The shortfall
+        // portion simply isn't backed by a costed lot; only what was actually
+        // available gets consumed and costed.
+        return consumptions;
+      }
       for (const c of consumptions) {
         await this.materialLotModel.findByIdAndUpdate(
           c.lot,

@@ -35,6 +35,7 @@ import { LoadingSpinner } from '@/components/shared/loading-spinner';
 import { ProductImage } from '@/components/shared/product-image';
 import { SearchCombobox } from '@/components/shared/search-combobox';
 import { QuickCreateCustomerDialog } from '@/components/shared/quick-create-customer-dialog';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -178,6 +179,84 @@ export default function NewOrderPage() {
     () => cart.reduce((sum, item) => sum + item.total, 0),
     [cart],
   );
+
+  // ── Leave-page guard: while the cart has items, any way of navigating away
+  // (in-app link, our own back button, browser Back/Forward, tab close/refresh)
+  // is intercepted and requires confirmation first.
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const pendingLeaveActionRef = useRef<(() => void) | null>(null);
+
+  const requestLeave = useCallback(
+    (action: () => void) => {
+      if (cart.length === 0) {
+        action();
+        return;
+      }
+      pendingLeaveActionRef.current = action;
+      setLeaveConfirmOpen(true);
+    },
+    [cart.length],
+  );
+
+  const confirmLeave = useCallback(() => {
+    setLeaveConfirmOpen(false);
+    const action = pendingLeaveActionRef.current;
+    pendingLeaveActionRef.current = null;
+    action?.();
+  }, []);
+
+  // Tab close / refresh / typed URL — browser's own native prompt.
+  useEffect(() => {
+    if (cart.length === 0) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [cart.length]);
+
+  // In-app navigation (sidebar links, etc.) — intercept the click before the
+  // router acts on it, since this app uses a plain BrowserRouter with no
+  // navigation-blocker API available.
+  useEffect(() => {
+    if (cart.length === 0) return;
+    const handleDocumentClick = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement)?.closest('a[href]') as HTMLAnchorElement | null;
+      if (!anchor || anchor.target === '_blank') return;
+      const href = anchor.getAttribute('href');
+      if (!href || href.startsWith('#')) return;
+      let url: URL;
+      try {
+        url = new URL(href, window.location.origin);
+      } catch {
+        return;
+      }
+      if (url.origin !== window.location.origin || url.pathname === window.location.pathname) return;
+      e.preventDefault();
+      e.stopPropagation();
+      requestLeave(() => navigate(url.pathname + url.search));
+    };
+    document.addEventListener('click', handleDocumentClick, true);
+    return () => document.removeEventListener('click', handleDocumentClick, true);
+  }, [cart.length, navigate, requestLeave]);
+
+  // Browser Back/Forward — trap it with a duplicate history entry: a Back press
+  // just lands back on this same page (harmless), and we ask for confirmation;
+  // confirming replays the Back past our trap entry to actually leave.
+  useEffect(() => {
+    if (cart.length === 0) return;
+    window.history.pushState({ salesGuard: true }, '', window.location.href);
+    const handlePopState = () => {
+      window.history.pushState({ salesGuard: true }, '', window.location.href);
+      requestLeave(() => {
+        window.removeEventListener('popstate', handlePopState);
+        window.history.go(-2);
+      });
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [cart.length, requestLeave]);
 
   useEffect(() => {
     if (paymentType === 'CASH' || paymentType === 'TRANSFER') {
@@ -373,7 +452,7 @@ export default function NewOrderPage() {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => navigate('/orders')}
+          onClick={() => requestLeave(() => navigate('/orders'))}
           className="shrink-0 text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-5 w-5" />
@@ -442,6 +521,7 @@ export default function NewOrderPage() {
               <div className="grid grid-cols-2 gap-3 p-1 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                 {products.map((product, index) => {
                   const cartItem = cart.find((item) => item.product._id === product._id);
+                  const isOverStock = !!cartItem && cartItem.quantity > product.currentStock;
                   return (
                     <button
                       key={product._id}
@@ -462,9 +542,11 @@ export default function NewOrderPage() {
                       }}
                       className={cn(
                         'relative flex flex-col items-center p-3 rounded-xl border cursor-pointer transition-all duration-150 text-center hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                        cartItem
-                          ? 'border-primary/50 bg-primary/5 shadow-sm'
-                          : 'border-border/60 hover:bg-accent hover:border-border',
+                        isOverStock
+                          ? 'border-red-500/50 bg-red-500/10 shadow-sm'
+                          : cartItem
+                            ? 'border-primary/50 bg-primary/5 shadow-sm'
+                            : 'border-border/60 hover:bg-accent hover:border-border',
                       )}
                     >
                       <ProductImage
@@ -482,7 +564,12 @@ export default function NewOrderPage() {
                       <p className="text-[11px] text-primary font-semibold mt-1">{formatCurrency(product.price)}</p>
                       <p className="text-[10px] text-muted-foreground">{product.currentStock} {getUnitName(product.baseUnit)}</p>
                       {cartItem && (
-                        <div className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground shadow-md ring-2 ring-card">
+                        <div
+                          className={cn(
+                            'absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold shadow-md ring-2 ring-card',
+                            isOverStock ? 'bg-red-500 text-white' : 'bg-primary text-primary-foreground',
+                          )}
+                        >
                           {cartItem.quantity}
                         </div>
                       )}
@@ -518,11 +605,15 @@ export default function NewOrderPage() {
                 {cart.map((item, index) => {
                   const hasSalesUnits = item.product.salesUnits.length > 0;
                   const hasDiscount = item.discountPercent > 0;
+                  const isOverStock = item.quantity > item.product.currentStock;
 
                   return (
                     <div
                       key={`${item.product._id}-${item.unit.id}-${index}`}
-                      className="group px-4 py-3 border-b border-border/30 last:border-b-0 hover:bg-muted/20 transition-colors"
+                      className={cn(
+                        'group px-4 py-3 border-b border-border/30 last:border-b-0 transition-colors',
+                        isOverStock ? 'bg-red-500/10 hover:bg-red-500/15' : 'hover:bg-muted/20',
+                      )}
                     >
                       {/* Product name + unit + delete */}
                       <div className="flex items-center justify-between gap-2 mb-2">
@@ -778,6 +869,19 @@ export default function NewOrderPage() {
         onOpenChange={setQuickCreateCustomerOpen}
         initialName={quickCreateCustomerInitialName}
         onCreated={handleCustomerCreated}
+      />
+
+      {/* Leave-page confirmation (cart has items) */}
+      <ConfirmDialog
+        open={leaveConfirmOpen}
+        onOpenChange={(open) => {
+          setLeaveConfirmOpen(open);
+          if (!open) pendingLeaveActionRef.current = null;
+        }}
+        title="Sotuvdan chiqilsinmi?"
+        description="Savatda mahsulot bor. Sahifadan chiqsangiz, hozirgi sotuv saqlanmaydi."
+        onConfirm={confirmLeave}
+        variant="destructive"
       />
     </div>
   );

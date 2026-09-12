@@ -60,3 +60,14 @@ export function useDeleteMaterial() {
     },
   });
 }
+
+export function useMaterialStockTake() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, quantity }: { id: string; quantity: number }) =>
+      materialsApi.stockTake(id, quantity),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['materials'] });
+    },
+  });
+}

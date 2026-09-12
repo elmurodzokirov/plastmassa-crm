@@ -13,6 +13,7 @@ import { MaterialsService } from './materials.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { QueryMaterialDto } from './dto/query-material.dto';
+import { AdjustMaterialStockDto } from './dto/adjust-material-stock.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -52,6 +53,12 @@ export class MaterialsController {
   @Permissions('products:update')
   async update(@Param('id') id: string, @Body() dto: UpdateMaterialDto) {
     return this.materialsService.update(id, dto);
+  }
+
+  @Patch(':id/stock-take')
+  @Permissions('products:update')
+  async stockTake(@Param('id') id: string, @Body() dto: AdjustMaterialStockDto) {
+    return this.materialsService.stockTake(id, dto.quantity);
   }
 
   @Delete(':id')

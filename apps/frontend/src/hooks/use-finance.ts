@@ -1,5 +1,5 @@
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
-import { financeApi, ExpenseQuery, ExpenseData } from '@/api/finance';
+import { financeApi, ExpenseQuery, ExpenseData, TransactionsLedgerParams } from '@/api/finance';
 
 // ── Expenses ─────────────────────────────────────────────────────────
 
@@ -89,6 +89,21 @@ export function useMonthlyCashFlow(year: number) {
     queryKey: ['monthlyCashFlow', year],
     queryFn: () => financeApi.getMonthlyCashFlow(year),
     enabled: !!year,
+  });
+}
+
+export function useTodayTransactions() {
+  return useQuery({
+    queryKey: ['todayTransactions'],
+    queryFn: () => financeApi.getTodayTransactions(),
+  });
+}
+
+export function useTransactions(params: TransactionsLedgerParams) {
+  return useQuery({
+    queryKey: ['transactions', params],
+    queryFn: () => financeApi.getTransactions(params),
+    enabled: !!params.dateFrom && !!params.dateTo,
   });
 }
 

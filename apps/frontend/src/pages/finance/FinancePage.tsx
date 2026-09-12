@@ -20,6 +20,8 @@ import {
   PieChart,
   Truck,
   Banknote,
+  ArrowUpCircle,
+  ArrowDownCircle,
 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import {
@@ -28,13 +30,14 @@ import {
   useUpdateExpense,
   useDeleteExpense,
   useCashFlow,
-  useMonthlyCashFlow,
+  useTodayTransactions,
   useDebtors,
   useCreditors,
-  useProfitAndLoss,
 } from '@/hooks/use-finance';
 import { useCreateSupplierPayment } from '@/hooks/use-suppliers';
+import type { FinanceTransaction } from '@/api/finance';
 import { toast } from '@/components/ui/use-toast';
+import { TransactionViewDialog } from '@/components/finance/transaction-view-dialog';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -70,21 +73,6 @@ import { DataTableWrapper } from '@/components/shared/data-table';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
 
 // ── Constants ─────────────────────────────────────────────────────────
-
-const MONTH_NAMES = [
-  'Yanvar',
-  'Fevral',
-  'Mart',
-  'Aprel',
-  'May',
-  'Iyun',
-  'Iyul',
-  'Avgust',
-  'Sentyabr',
-  'Oktyabr',
-  'Noyabr',
-  'Dekabr',
-];
 
 const EXPENSE_CATEGORIES = [
   { value: 'Xomashyo', label: 'Xomashyo' },
@@ -158,7 +146,6 @@ function getMonthRange() {
 
 export default function FinancePage() {
   const navigate = useNavigate();
-  const now = new Date();
   const defaultRange = getMonthRange();
 
   // ── Shared state ──────────────────────────────────────────────────
@@ -167,7 +154,7 @@ export default function FinancePage() {
   // ── Cash Flow state ───────────────────────────────────────────────
   const [cfDateFrom, setCfDateFrom] = useState(defaultRange.dateFrom);
   const [cfDateTo, setCfDateTo] = useState(defaultRange.dateTo);
-  const [cfYear] = useState(now.getFullYear());
+  const [viewTransaction, setViewTransaction] = useState<FinanceTransaction | null>(null);
 
   // ── Expenses state ────────────────────────────────────────────────
   const [expCategoryFilter, setExpCategoryFilter] = useState<string>('ALL');
@@ -179,10 +166,6 @@ export default function FinancePage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
 
-  // ── P&L state ─────────────────────────────────────────────────────
-  const [plDateFrom, setPlDateFrom] = useState(defaultRange.dateFrom);
-  const [plDateTo, setPlDateTo] = useState(defaultRange.dateTo);
-
   // ── Supplier payment state ───────────────────────────────────────
   const [supplierPaymentDialogOpen, setSupplierPaymentDialogOpen] = useState(false);
 
@@ -193,7 +176,7 @@ export default function FinancePage() {
     [cfDateFrom, cfDateTo],
   );
   const { data: cashFlowData, isLoading: cashFlowLoading } = useCashFlow(cashFlowParams);
-  const { data: monthlyCashFlow, isLoading: monthlyLoading } = useMonthlyCashFlow(cfYear);
+  const { data: todayTransactionsData, isLoading: todayTransactionsLoading } = useTodayTransactions();
 
   const { data: debtorsData, isLoading: debtorsLoading } = useDebtors();
   const { data: creditorsData, isLoading: creditorsLoading } = useCreditors();
@@ -207,12 +190,6 @@ export default function FinancePage() {
     return params;
   }, [expCategoryFilter, expPaymentFilter, expDateFrom, expDateTo]);
   const { data: expensesData, isLoading: expensesLoading } = useExpenses(expenseParams);
-
-  const plParams = useMemo(
-    () => ({ dateFrom: plDateFrom, dateTo: plDateTo }),
-    [plDateFrom, plDateTo],
-  );
-  const { data: plData, isLoading: plLoading } = useProfitAndLoss(plParams);
 
   // ── Mutations ─────────────────────────────────────────────────────
 
@@ -228,7 +205,7 @@ export default function FinancePage() {
   const creditors = Array.isArray(creditorsData) ? creditorsData : [];
   const totalCredit = creditors.reduce((sum, c) => sum + (c.totalDebt || 0), 0);
   const expenses = expensesData?.items || [];
-  const monthlyData = Array.isArray(monthlyCashFlow) ? monthlyCashFlow : [];
+  const todayTransactions = todayTransactionsData?.items || [];
 
   // ── Expense form ──────────────────────────────────────────────────
 
@@ -390,7 +367,6 @@ export default function FinancePage() {
             <TabsTrigger value="debtors">Qarzdorlar</TabsTrigger>
             <TabsTrigger value="creditors">Kreditorlar</TabsTrigger>
             <TabsTrigger value="expenses">Xarajatlar</TabsTrigger>
-            <TabsTrigger value="pnl">Foyda va Zarar</TabsTrigger>
           </TabsList>
         </motion.div>
 
@@ -431,7 +407,7 @@ export default function FinancePage() {
 
           {/* Stat Cards */}
           {!cashFlowLoading && cashFlowData && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <StatCard
                 title="Kirim"
                 value={formatCurrency(cashFlowData.totalIncome || 0)}
@@ -448,14 +424,6 @@ export default function FinancePage() {
                 iconBg="bg-red-500/20"
                 index={1}
               />
-              <StatCard
-                title="Sof foyda"
-                value={formatCurrency(cashFlowData.netProfit || 0)}
-                icon={DollarSign}
-                iconColor="text-indigo-400"
-                iconBg="bg-indigo-500/20"
-                index={2}
-              />
             </div>
           )}
 
@@ -465,66 +433,53 @@ export default function FinancePage() {
             </div>
           )}
 
-          {/* Monthly Cash Flow Table */}
+          {/* Today's Transactions List */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.2 }}
           >
             <h2 className="text-lg font-semibold text-foreground mb-4">
-              {cfYear}-yil oylik pul oqimi
+              Bugungi kirim va chiqimlar
             </h2>
             <DataTableWrapper
-              isLoading={monthlyLoading}
-              isEmpty={monthlyData.length === 0}
+              isLoading={todayTransactionsLoading}
+              isEmpty={todayTransactions.length === 0}
               emptyTitle="Ma'lumot topilmadi"
-              emptyDescription="Bu yil uchun oylik pul oqimi mavjud emas"
+              emptyDescription="Bugun uchun hech qanday kirim yoki chiqim qayd etilmagan"
             >
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-b border-border/50 hover:bg-transparent">
-                      <TableHead className="min-w-[120px]">Oy</TableHead>
-                      <TableHead className="min-w-[140px]">Kirim</TableHead>
-                      <TableHead className="min-w-[140px]">Chiqim</TableHead>
-                      <TableHead className="min-w-[140px]">Sof foyda</TableHead>
-                      <TableHead className="min-w-[100px]">Holat</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {monthlyData.map((row) => (
-                      <TableRow
-                        key={row.month}
-                        className="border-b border-border/30 hover:bg-accent/50 transition-colors"
-                      >
-                        <TableCell className="font-medium text-foreground">
-                          {MONTH_NAMES[row.month - 1] || `Oy ${row.month}`}
-                        </TableCell>
-                        <TableCell className="text-green-400">
-                          {formatCurrency(row.income || 0)}
-                        </TableCell>
-                        <TableCell className="text-red-400">
-                          {formatCurrency(row.expense || 0)}
-                        </TableCell>
-                        <TableCell
-                          className={cn(
-                            'font-semibold',
-                            (row.net || 0) >= 0 ? 'text-green-400' : 'text-red-400',
-                          )}
-                        >
-                          {formatCurrency(row.net || 0)}
-                        </TableCell>
-                        <TableCell>
-                          {(row.net || 0) >= 0 ? (
-                            <Badge variant="success">Foyda</Badge>
-                          ) : (
-                            <Badge variant="destructive">Zarar</Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <div className="divide-y divide-border/30 rounded-xl border border-border/50 overflow-hidden">
+                {todayTransactions.map((tx) => (
+                  <button
+                    key={tx._id}
+                    type="button"
+                    onClick={() => setViewTransaction(tx)}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-accent/50 transition-colors"
+                  >
+                    {tx.direction === 'IN' ? (
+                      <ArrowUpCircle className="h-5 w-5 text-green-400 shrink-0" />
+                    ) : (
+                      <ArrowDownCircle className="h-5 w-5 text-red-400 shrink-0" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground truncate">{tx.title}</p>
+                      {tx.subtitle && (
+                        <p className="text-xs text-muted-foreground truncate">{tx.subtitle}</p>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {format(new Date(tx.date), 'HH:mm')}
+                    </span>
+                    <span
+                      className={cn(
+                        'text-sm font-semibold shrink-0 w-32 text-right',
+                        tx.direction === 'IN' ? 'text-green-400' : 'text-red-400',
+                      )}
+                    >
+                      {tx.direction === 'IN' ? '+' : '-'}{formatCurrency(tx.amount)}
+                    </span>
+                  </button>
+                ))}
               </div>
             </DataTableWrapper>
           </motion.div>
@@ -871,174 +826,6 @@ export default function FinancePage() {
           </DataTableWrapper>
         </TabsContent>
 
-        {/* ── TAB 4: Foyda va Zarar (P&L) ──────────────────────────────── */}
-        <TabsContent value="pnl" className="space-y-6">
-          {/* Date range filter */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
-            className="flex flex-col sm:flex-row items-start sm:items-end gap-3"
-          >
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Boshlanish sana</Label>
-              <Input
-                type="date"
-                value={plDateFrom}
-                onChange={(e) => setPlDateFrom(e.target.value)}
-                className="h-9 rounded-xl text-xs"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Tugash sana</Label>
-              <Input
-                type="date"
-                value={plDateTo}
-                onChange={(e) => setPlDateTo(e.target.value)}
-                className="h-9 rounded-xl text-xs"
-              />
-            </div>
-          </motion.div>
-
-          {plLoading && (
-            <div className="flex items-center justify-center py-12">
-              <LoadingSpinner size="lg" />
-            </div>
-          )}
-
-          {!plLoading && plData && (
-            <>
-              {/* Summary Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <StatCard
-                  title="Jami daromad"
-                  value={formatCurrency(plData.totalRevenue || 0)}
-                  icon={TrendingUp}
-                  iconColor="text-green-400"
-                  iconBg="bg-green-500/20"
-                  index={0}
-                />
-                <StatCard
-                  title="Jami xarajat"
-                  value={formatCurrency(plData.totalExpenses || 0)}
-                  icon={TrendingDown}
-                  iconColor="text-red-400"
-                  iconBg="bg-red-500/20"
-                  index={1}
-                />
-                <StatCard
-                  title="Sof foyda"
-                  value={formatCurrency(plData.netProfit || 0)}
-                  icon={BarChart3}
-                  iconColor="text-indigo-400"
-                  iconBg="bg-indigo-500/20"
-                  index={2}
-                />
-              </div>
-
-              {/* Revenue Breakdown by Product */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.25 }}
-              >
-                <h3 className="text-base font-semibold text-foreground mb-3 flex items-center gap-2">
-                  <Receipt className="h-4 w-4 text-green-400" />
-                  Mahsulot bo'yicha daromad
-                </h3>
-                <DataTableWrapper
-                  isEmpty={!plData.revenueByProduct || plData.revenueByProduct.length === 0}
-                  emptyTitle="Ma'lumot topilmadi"
-                  emptyDescription="Bu davr uchun mahsulot bo'yicha daromad mavjud emas"
-                >
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="border-b border-border/50 hover:bg-transparent">
-                          <TableHead className="min-w-[200px]">Mahsulot</TableHead>
-                          <TableHead className="min-w-[120px]">Miqdori</TableHead>
-                          <TableHead className="min-w-[150px]">Jami summa</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {(plData.revenueByProduct || []).map((item, idx) => (
-                          <TableRow
-                            key={idx}
-                            className="border-b border-border/30 hover:bg-accent/50 transition-colors"
-                          >
-                            <TableCell className="font-medium text-foreground">
-                              {item.name || '---'}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {item.quantity ?? '---'}
-                            </TableCell>
-                            <TableCell className="font-semibold text-green-400">
-                              {formatCurrency(item.total || 0)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </DataTableWrapper>
-              </motion.div>
-
-              {/* Expense Breakdown by Category */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.3 }}
-              >
-                <h3 className="text-base font-semibold text-foreground mb-3 flex items-center gap-2">
-                  <PieChart className="h-4 w-4 text-red-400" />
-                  Kategoriya bo'yicha xarajatlar
-                </h3>
-                <DataTableWrapper
-                  isEmpty={!plData.expensesByCategory || plData.expensesByCategory.length === 0}
-                  emptyTitle="Ma'lumot topilmadi"
-                  emptyDescription="Bu davr uchun kategoriya bo'yicha xarajat mavjud emas"
-                >
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="border-b border-border/50 hover:bg-transparent">
-                          <TableHead className="min-w-[180px]">Kategoriya</TableHead>
-                          <TableHead className="min-w-[100px]">Soni</TableHead>
-                          <TableHead className="min-w-[150px]">Jami summa</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {(plData.expensesByCategory || []).map((item, idx) => (
-                          <TableRow
-                            key={idx}
-                            className="border-b border-border/30 hover:bg-accent/50 transition-colors"
-                          >
-                            <TableCell>
-                              <Badge
-                                className={cn(
-                                  'border-transparent',
-                                  CATEGORY_COLORS[item.category] || CATEGORY_COLORS['Boshqa'],
-                                )}
-                              >
-                                {item.category || '---'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {item.count ?? '---'}
-                            </TableCell>
-                            <TableCell className="font-semibold text-red-400">
-                              {formatCurrency(item.total || 0)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </DataTableWrapper>
-              </motion.div>
-            </>
-          )}
-        </TabsContent>
       </Tabs>
 
       {/* ── Create/Edit Expense Dialog ──────────────────────────────────── */}
@@ -1339,6 +1126,13 @@ export default function FinancePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Transaction View (read-only) */}
+      <TransactionViewDialog
+        open={viewTransaction !== null}
+        onOpenChange={(open) => { if (!open) setViewTransaction(null); }}
+        transaction={viewTransaction}
+      />
     </div>
   );
 }

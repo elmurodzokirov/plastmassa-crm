@@ -275,6 +275,20 @@ export class ProductLotsService {
     return lot.save();
   }
 
+  /** The lot auto-created from a production log (if any) — used to check whether
+   *  that log's produced stock has since been partially/fully consumed (i.e. can
+   *  no longer be safely edited or deleted from the production side). */
+  async findByProductionLog(productionLogId: string): Promise<ProductLotDocument | null> {
+    return this.productLotModel.findOne({ productionLog: productionLogId }).exec();
+  }
+
+  /** Removes the lot auto-created from a production log, used when that log is being
+   *  edited (product/quantity changed) or deleted — only ever called after confirming
+   *  via findByProductionLog that nothing has been consumed from it yet. */
+  async deleteByProductionLog(productionLogId: string): Promise<void> {
+    await this.productLotModel.deleteOne({ productionLog: productionLogId }).exec();
+  }
+
   async createAdjustmentLot(
     productId: string,
     quantity: number,

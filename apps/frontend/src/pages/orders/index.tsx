@@ -11,6 +11,7 @@ import {
   Eye,
   FileText,
   RefreshCw,
+  RotateCcw,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -114,6 +115,7 @@ export default function OrdersPage() {
   const pendingCount = allOrders.filter((o) => o.status === 'PENDING').length;
   const totalAmount = allOrders.reduce((sum, o) => sum + o.totalAmount, 0);
   const canCreateOrders = can('orders:create');
+  const canCreateReturns = can('returns:create');
 
   const getCustomerName = (customer: string | Customer): string => {
     if (typeof customer === 'string') return customer;
@@ -130,12 +132,24 @@ export default function OrdersPage() {
             Jami {totalCount} ta buyurtma
           </p>
         </div>
-        {canCreateOrders && (
-          <Button onClick={() => navigate('/orders/new')} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Yangi buyurtma
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {canCreateReturns && (
+            <Button
+              variant="outline"
+              onClick={() => navigate('/returns/new')}
+              className="gap-2"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Mijozdan qaytarish
+            </Button>
+          )}
+          {canCreateOrders && (
+            <Button onClick={() => navigate('/orders/new')} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Yangi buyurtma
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Stat Cards */}

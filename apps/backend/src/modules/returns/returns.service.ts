@@ -44,6 +44,10 @@ export class ReturnsService {
       );
     }
 
+    if (!dto.order) {
+      return this.createFromCustomer(dto, userId);
+    }
+
     const order = await this.orderModel.findById(dto.order).exec();
 
     if (!order) {
@@ -152,9 +156,82 @@ export class ReturnsService {
 
     const returnDoc = new this.returnModel({
       order: dto.order,
+      customer: order.customer,
       items: returnItems,
       reason: dto.reason,
       totalAmount,
+      status: 'PENDING',
+      createdBy: userId,
+    });
+
+    const savedReturn = await returnDoc.save();
+    return this.findById(savedReturn._id.toString());
+  }
+
+  // A return not tied to any specific order — the customer and returned
+  // products/quantities/prices are entered freely (mirrors "Yangi sotuv" cart
+  // building), instead of being validated against one order's line items.
+  private async createFromCustomer(
+    dto: CreateReturnDto,
+    userId: string,
+  ): Promise<ReturnDocument> {
+    if (!dto.customer) {
+      throw new BadRequestException('Mijozni tanlang');
+    }
+
+    // Validates the customer exists.
+    await this.customersService.findById(dto.customer);
+
+    const returnItems = [];
+    let totalAmount = 0;
+
+    for (const item of dto.items) {
+      if (item.price === undefined || item.price === null) {
+        throw new BadRequestException(
+          'Har bir mahsulot uchun narx ko\'rsatilishi kerak',
+        );
+      }
+
+      const product = await this.productsService.findById(item.product);
+      const baseUnitId = this.getDocumentId(product.baseUnit);
+      const baseUnitName = this.getUnitName(product.baseUnit);
+      const baseQuantity = this.calculateBaseQuantity(
+        product,
+        item.unit,
+        item.quantity,
+      );
+      const unitName = this.resolveUnitName(product, item.unit);
+      const total = item.quantity * item.price;
+
+      returnItems.push({
+        product: this.getDocumentId((product as any)._id),
+        productName: product.name,
+        unit: item.unit,
+        unitName,
+        quantity: item.quantity,
+        baseQuantity,
+        baseUnit: baseUnitId,
+        baseUnitName,
+        price: item.price,
+        total,
+        lotConsumptions: [],
+      });
+
+      totalAmount += total;
+    }
+
+    if (dto.refundAmount !== undefined && dto.refundAmount > totalAmount) {
+      throw new BadRequestException(
+        'Qaytarilgan pul summadan katta bo\'lishi mumkin emas',
+      );
+    }
+
+    const returnDoc = new this.returnModel({
+      customer: dto.customer,
+      items: returnItems,
+      reason: dto.reason,
+      totalAmount,
+      refundAmount: dto.refundAmount || 0,
       status: 'PENDING',
       createdBy: userId,
     });
@@ -195,6 +272,7 @@ export class ReturnsService {
       this.returnModel
         .find(filter)
         .populate('order')
+        .populate('customer')
         .populate('items.product')
         .populate('items.unit')
         .populate('items.baseUnit')
@@ -220,6 +298,7 @@ export class ReturnsService {
     const returnDoc = await this.returnModel
       .findById(id)
       .populate('order')
+      .populate('customer')
       .populate('items.product')
       .populate('items.unit')
       .populate('items.baseUnit')
@@ -245,6 +324,24 @@ export class ReturnsService {
       throw new BadRequestException('Only PENDING returns can be approved');
     }
 
+    if (returnDoc.order) {
+      await this.approveOrderReturn(returnDoc, userId);
+    } else {
+      await this.approveCustomerReturn(returnDoc, userId);
+    }
+
+    returnDoc.status = 'APPROVED';
+    returnDoc.approvedBy = userId as any;
+    returnDoc.approvedAt = new Date();
+    await returnDoc.save();
+
+    return this.findById(id);
+  }
+
+  private async approveOrderReturn(
+    returnDoc: ReturnDocument,
+    userId: string,
+  ): Promise<void> {
     const order = await this.orderModel.findById(returnDoc.order).exec();
     if (!order) {
       throw new NotFoundException('Qaytarish uchun buyurtma topilmadi');
@@ -290,13 +387,46 @@ export class ReturnsService {
         );
       }
     }
+  }
 
-    returnDoc.status = 'APPROVED';
-    returnDoc.approvedBy = userId as any;
-    returnDoc.approvedAt = new Date();
-    await returnDoc.save();
+  // Order-independent "return from customer": there's no original order-line
+  // lot-consumption history to restore, so restock via a fresh adjustment lot
+  // instead (same pattern StockService uses for manual "IN" stock movements).
+  // Money: `refundAmount` (cash handed back) is left as-is on the document —
+  // FinanceService reads it directly for the Kassa feed. Whatever isn't
+  // refunded in cash settles against the customer's account instead, which may
+  // push currentDebt negative (a credit balance for future purchases).
+  private async approveCustomerReturn(
+    returnDoc: ReturnDocument,
+    userId: string,
+  ): Promise<void> {
+    for (const item of returnDoc.items as any[]) {
+      const productId = this.getDocumentId(item.product);
+      const baseQuantity =
+        typeof item.baseQuantity === 'number' ? item.baseQuantity : item.quantity;
+      const product = await this.productsService.findById(productId);
+      const unitCost = product.costPrice || (product as any).costPerUnit || 0;
 
-    return this.findById(id);
+      await this.productsService.updateStock(productId, baseQuantity);
+      await this.productLotsService.createAdjustmentLot(
+        productId,
+        baseQuantity,
+        this.getDocumentId(item.baseUnit),
+        unitCost,
+        userId,
+        `Mijozdan qaytarish: ${returnDoc._id}`,
+      );
+    }
+
+    await this.persistStockMovements(returnDoc, userId);
+
+    const settleAmount = returnDoc.totalAmount - (returnDoc.refundAmount || 0);
+    if (settleAmount > 0) {
+      await this.customersService.updateDebt(
+        returnDoc.customer.toString(),
+        -settleAmount,
+      );
+    }
   }
 
   private async getApprovedReturnTotal(orderId: string): Promise<number> {
@@ -397,6 +527,19 @@ export class ReturnsService {
     }
 
     return unit?.name || '';
+  }
+
+  private resolveUnitName(product: any, unitId: string): string {
+    const baseUnitId = this.getDocumentId(product.baseUnit);
+    if (unitId === baseUnitId) {
+      return this.getUnitName(product.baseUnit);
+    }
+
+    const salesUnit = (product.salesUnits || []).find(
+      (unit: any) => this.getDocumentId(unit.unit) === unitId,
+    );
+
+    return salesUnit ? this.getUnitName(salesUnit.unit) : '';
   }
 
   private calculateBaseQuantity(

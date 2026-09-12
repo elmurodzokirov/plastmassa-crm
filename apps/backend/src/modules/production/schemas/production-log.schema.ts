@@ -49,6 +49,29 @@ export class MaterialUsed {
 
 export const MaterialUsedSchema = SchemaFactory.createForClass(MaterialUsed);
 
+@Schema({ _id: false })
+export class ProductionLogEdit {
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  user: Types.ObjectId;
+
+  @Prop({ required: true })
+  userName: string;
+
+  @Prop({ required: true })
+  changedAt: Date;
+
+  @Prop({ required: true })
+  field: string;
+
+  @Prop()
+  oldValue: string;
+
+  @Prop()
+  newValue: string;
+}
+
+export const ProductionLogEditSchema = SchemaFactory.createForClass(ProductionLogEdit);
+
 @Schema({ timestamps: true })
 export class ProductionLog {
   @Prop({ type: Types.ObjectId, ref: 'Product', required: true })
@@ -62,6 +85,12 @@ export class ProductionLog {
 
   @Prop({ required: true })
   unitName: string;
+
+  // Shared by every log created together in one "Yangi ishlab chiqarish yozuvi"
+  // submission, so the production list can group and edit them together as a
+  // single document. Absent on logs created before this field existed.
+  @Prop({ trim: true, index: true })
+  batchNumber?: string;
 
   @Prop({ required: true })
   date: Date;
@@ -86,6 +115,10 @@ export class ProductionLog {
 
   @Prop({ trim: true })
   notes: string;
+
+  // Audit trail: who changed what, and when, after this log was first created.
+  @Prop({ type: [ProductionLogEditSchema], default: [] })
+  editHistory: ProductionLogEdit[];
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   worker: Types.ObjectId;

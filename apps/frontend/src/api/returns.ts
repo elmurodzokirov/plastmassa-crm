@@ -16,13 +16,17 @@ export const returnsApi = {
   getById: (id: string) =>
     client.get<ReturnEntity>(`/returns/${id}`).then((r) => r.data),
   create: (data: {
-    order: string;
+    // Either `order` (return tied to one existing order) or `customer` (a
+    // free-form "return from customer" not tied to any order) must be given.
+    order?: string;
+    customer?: string;
     reason: string;
+    refundAmount?: number;
     items: Array<{
       product: string;
       unit: string;
       quantity: number;
-      price: number;
+      price?: number;
     }>;
   }) =>
     client.post<ReturnEntity>('/returns', data).then((r) => r.data),

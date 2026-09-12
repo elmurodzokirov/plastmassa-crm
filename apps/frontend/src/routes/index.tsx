@@ -25,11 +25,13 @@ const OrderDetailPage = lazy(() => import('@/pages/orders/[id]'));
 const EditOrderPage = lazy(() => import('@/pages/orders/edit'));
 const OrderCheckPage = lazy(() => import('@/pages/orders/check'));
 const ReturnsPage = lazy(() => import('@/pages/returns/index'));
+const NewCustomerReturnPage = lazy(() => import('@/pages/returns/new'));
 const ProductionPage = lazy(() => import('@/pages/production/index'));
 const AttendancePage = lazy(() => import('@/pages/attendance/index'));
 const PayrollPage = lazy(() => import('@/pages/payroll/index'));
 const PayrollSlipPage = lazy(() => import('@/pages/payroll/PayrollSlipPage'));
 const FinancePage = lazy(() => import('@/pages/finance/FinancePage'));
+const ReportsHubPage = lazy(() => import('@/pages/reports/ReportsHubPage'));
 const ReportsPage = lazy(() => import('@/pages/reports/ReportsPage'));
 const RolesPage = lazy(() => import('@/pages/roles/index'));
 const UsersPage = lazy(() => import('@/pages/users/index'));
@@ -68,6 +70,7 @@ export function AppRoutes() {
           <Route path="orders/:id/edit" element={<PermissionRoute permission="orders:update"><EditOrderPage /></PermissionRoute>} />
           <Route path="orders/:id/check" element={<PermissionRoute permission="orders:read"><OrderCheckPage /></PermissionRoute>} />
           <Route path="returns" element={<PermissionRoute permission="returns:read"><ReturnsPage /></PermissionRoute>} />
+          <Route path="returns/new" element={<PermissionRoute permission="returns:create"><NewCustomerReturnPage /></PermissionRoute>} />
 
           {/* Ombor */}
           <Route path="calculations" element={<PermissionRoute permission="products:read"><CalculationsPage /></PermissionRoute>} />
@@ -88,7 +91,10 @@ export function AppRoutes() {
 
           {/* Moliya */}
           <Route path="finance" element={<PermissionRoute permission="finance:read"><FinancePage /></PermissionRoute>} />
-          <Route path="reports" element={<PermissionRoute permission="reports:read"><ReportsPage /></PermissionRoute>} />
+
+          {/* Hisobotlar */}
+          <Route path="reports" element={<PermissionRoute permission="reports:read"><ReportsHubPage /></PermissionRoute>} />
+          <Route path="reports/:department" element={<PermissionRoute permission="reports:read"><ReportsPage /></PermissionRoute>} />
 
           {/* Tizim */}
           <Route path="roles" element={<PermissionRoute permission="users:create"><RolesPage /></PermissionRoute>} />

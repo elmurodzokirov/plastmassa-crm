@@ -36,4 +36,6 @@ export const materialsApi = {
     client.patch<Material>(`/materials/${id}`, data).then((r) => r.data),
   delete: (id: string) =>
     client.delete(`/materials/${id}`).then((r) => r.data),
+  stockTake: (id: string, quantity: number) =>
+    client.patch<Material>(`/materials/${id}/stock-take`, { quantity }).then((r) => r.data),
 };

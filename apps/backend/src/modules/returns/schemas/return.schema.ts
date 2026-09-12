@@ -63,8 +63,15 @@ export const ReturnItemSchema = SchemaFactory.createForClass(ReturnItem);
 
 @Schema({ timestamps: true })
 export class Return {
-  @Prop({ type: Types.ObjectId, ref: 'Order', required: true })
-  order: Types.ObjectId;
+  // Optional — only set for returns created from within a specific order's own
+  // detail page (the original flow). Order-independent "return from customer"
+  // documents (created from the Orders list page) leave this unset and rely on
+  // `customer` instead.
+  @Prop({ type: Types.ObjectId, ref: 'Order' })
+  order?: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'Customer', required: true })
+  customer: Types.ObjectId;
 
   @Prop({ type: [ReturnItemSchema], required: true })
   items: ReturnItem[];
@@ -74,6 +81,13 @@ export class Return {
 
   @Prop({ required: true, min: 0 })
   totalAmount: number;
+
+  // Cash actually handed back to the customer at approval time. Whatever isn't
+  // covered by this (totalAmount - refundAmount) is instead settled against the
+  // customer's account (currentDebt), which is allowed to go negative — meaning
+  // the business owes the customer a credit for future purchases.
+  @Prop({ default: 0, min: 0 })
+  refundAmount: number;
 
   @Prop({ enum: ['PENDING', 'APPROVED'], default: 'PENDING' })
   status: string;

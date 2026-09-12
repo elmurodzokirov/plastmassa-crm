@@ -2,6 +2,9 @@ import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import {
   productionApi,
   ProductionLogQuery,
+  ProductionBatchQuery,
+  CreateProductionLogBatchInput,
+  UpdateProductionLogBatchInput,
 } from '@/api/production';
 
 export function useProductionLogs(params?: ProductionLogQuery) {
@@ -55,6 +58,52 @@ export function useApproveProductionLog() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['production-logs'] });
       queryClient.invalidateQueries({ queryKey: ['daily-production-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    },
+  });
+}
+
+// ── Batches ("hujjat" — one or more logs created/edited together) ──────────────
+
+export function useCreateProductionLogBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateProductionLogBatchInput) => productionApi.createLogsBatch(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['production-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['production-log-batches'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-production-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['materials'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    },
+  });
+}
+
+export function useProductionLogBatches(params?: ProductionBatchQuery) {
+  return useQuery({
+    queryKey: ['production-log-batches', params],
+    queryFn: () => productionApi.getBatches(params),
+  });
+}
+
+export function useProductionLogBatchDetail(batchNumber: string | null) {
+  return useQuery({
+    queryKey: ['production-log-batches', 'detail', batchNumber],
+    queryFn: () => productionApi.getBatchDetail(batchNumber as string),
+    enabled: !!batchNumber,
+  });
+}
+
+export function useUpdateProductionLogBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ batchNumber, data }: { batchNumber: string; data: UpdateProductionLogBatchInput }) =>
+      productionApi.updateBatch(batchNumber, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['production-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['production-log-batches'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-production-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['materials'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
     },
   });

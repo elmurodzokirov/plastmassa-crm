@@ -36,6 +36,19 @@ export class FinanceController {
     return this.financeService.getMonthlyCashFlow(parseInt(year));
   }
 
+  @Get('transactions/today')
+  async getTodayTransactions() {
+    return this.financeService.getTodayTransactions();
+  }
+
+  @Get('transactions')
+  async getTransactions(
+    @Query('dateFrom') dateFrom: string,
+    @Query('dateTo') dateTo: string,
+  ) {
+    return this.financeService.getTransactions(dateFrom, dateTo);
+  }
+
   @Get('summary')
   async getSummary() {
     return this.financeService.getSummary();

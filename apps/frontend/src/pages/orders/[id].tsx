@@ -392,6 +392,17 @@ export default function OrderDetailPage() {
   const statusInfo = STATUS_MAP[order.status] || { label: order.status, variant: 'secondary' as const };
   const paymentInfo = PAYMENT_TYPE_MAP[order.paymentType] || { label: order.paymentType, variant: 'secondary' as const };
   const remaining = order.totalAmount - order.paidAmount;
+  // Customer's debt before/after this sale. There's no stored historical snapshot,
+  // so "after" is the customer's live currentDebt and "before" is derived by
+  // subtracting what this specific order contributed to it at creation time
+  // (only DEBT-type orders add to currentDebt) — an approximation if other
+  // payments/orders happened since, but accurate in the common case.
+  const debtAddedByOrder =
+    order.paymentType === 'DEBT'
+      ? Math.max(order.totalAmount - order.initialPaidAmount, 0)
+      : 0;
+  const debtAfterSale = customer?.currentDebt ?? 0;
+  const debtBeforeSale = Math.max(debtAfterSale - debtAddedByOrder, 0);
   const statusLabel = pendingStatus ? STATUS_MAP[pendingStatus]?.label || pendingStatus : '';
   const returnTotalAmount = returnItems.reduce(
     (sum, item) => sum + item.quantity * item.price,
@@ -945,31 +956,41 @@ export default function OrderDetailPage() {
                 </div>
               )}
 
-              {/* Cost & Profit */}
-              {((order as any).totalCost > 0 || (order as any).grossProfit !== undefined) && (
+              {/* Customer debt before/after this sale */}
+              {customer && (
                 <div className="pt-4 border-t border-border/50 space-y-3">
                   <div className="flex items-center gap-3">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500/20">
                       <DollarSign className="h-4 w-4 text-orange-400" />
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Tannarx</p>
+                      <p className="text-xs text-muted-foreground">Mijozning avvalgi qarzi</p>
                       <p className="text-lg font-semibold text-orange-400">
-                        {formatCurrency((order as any).totalCost || 0)}
+                        {formatCurrency(debtBeforeSale)}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20">
-                      <DollarSign className="h-4 w-4 text-emerald-400" />
+                    <div
+                      className={cn(
+                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl',
+                        debtAfterSale > 0 ? 'bg-red-500/20' : 'bg-emerald-500/20',
+                      )}
+                    >
+                      <DollarSign
+                        className={cn(
+                          'h-4 w-4',
+                          debtAfterSale > 0 ? 'text-red-400' : 'text-emerald-400',
+                        )}
+                      />
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Yalpi foyda</p>
+                      <p className="text-xs text-muted-foreground">Savdodan keyingi qarzi</p>
                       <p className={cn(
                         'text-lg font-semibold',
-                        ((order as any).grossProfit || 0) >= 0 ? 'text-emerald-400' : 'text-red-400',
+                        debtAfterSale > 0 ? 'text-red-400' : 'text-emerald-400',
                       )}>
-                        {formatCurrency((order as any).grossProfit || 0)}
+                        {formatCurrency(debtAfterSale)}
                       </p>
                     </div>
                   </div>

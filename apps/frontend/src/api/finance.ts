@@ -80,6 +80,55 @@ export interface ProfitAndLossData {
   expensesByCategory: { category: string; total: number; count: number }[];
 }
 
+export type FinanceTransactionType = 'ORDER_INCOME' | 'PAYMENT' | 'EXPENSE' | 'SUPPLIER_PAYMENT' | 'RETURN_REFUND';
+
+export interface FinanceTransaction {
+  _id: string;
+  type: FinanceTransactionType;
+  direction: 'IN' | 'OUT';
+  amount: number;
+  date: string;
+  title: string;
+  subtitle?: string;
+  detail: {
+    orderNumber?: string;
+    customerName?: string;
+    customerPhone?: string;
+    supplierName?: string;
+    supplierPhone?: string;
+    paymentType?: string;
+    orderTotal?: number;
+    items?: { productName: string; quantity: number; unitName: string; price: number; total: number }[];
+    category?: string;
+    description?: string;
+    paymentMethod?: string;
+    notes?: string;
+    reason?: string;
+    returnTotal?: number;
+  };
+  /** Running cash balance at this point in the feed — only set when returned
+   *  in chronological (oldest-first) order, i.e. by getTransactions. */
+  balance?: number;
+}
+
+export interface TodayTransactionsData {
+  items: FinanceTransaction[];
+  totalIncome: number;
+  totalExpense: number;
+}
+
+export interface TransactionsLedgerParams {
+  dateFrom: string;
+  dateTo: string;
+}
+
+export interface TransactionsLedgerData {
+  items: FinanceTransaction[];
+  totalIncome: number;
+  totalExpense: number;
+  closingBalance: number;
+}
+
 // ── API Client ───────────────────────────────────────────────────────
 
 export const financeApi = {
@@ -106,6 +155,10 @@ export const financeApi = {
     client.get<CashFlowData>('/finance/cash-flow', { params }).then((r) => r.data),
   getMonthlyCashFlow: (year: number) =>
     client.get<MonthlyCashFlowItem[]>(`/finance/cash-flow/monthly`, { params: { year } }).then((r) => r.data),
+  getTodayTransactions: () =>
+    client.get<TodayTransactionsData>('/finance/transactions/today').then((r) => r.data),
+  getTransactions: (params: TransactionsLedgerParams) =>
+    client.get<TransactionsLedgerData>('/finance/transactions', { params }).then((r) => r.data),
   getFinanceSummary: () =>
     client.get<FinanceSummary>('/finance/summary').then((r) => r.data),
   getProfitAndLoss: (params: { dateFrom?: string; dateTo?: string }) =>

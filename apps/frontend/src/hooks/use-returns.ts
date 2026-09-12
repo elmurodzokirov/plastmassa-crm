@@ -21,6 +21,8 @@ export function useApproveReturn() {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['finance'] });
+      queryClient.invalidateQueries({ queryKey: ['todayTransactions'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
     },
   });
 }
@@ -37,6 +39,8 @@ export function useCreateReturn() {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['finance'] });
+      queryClient.invalidateQueries({ queryKey: ['todayTransactions'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
     },
   });
 }

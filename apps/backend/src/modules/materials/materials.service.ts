@@ -170,4 +170,18 @@ export class MaterialsService {
     }
     return material;
   }
+
+  async stockTake(id: string, countedQuantity: number): Promise<MaterialDocument> {
+    const material = await this.materialModel.findById(id).exec();
+    if (!material) {
+      throw new NotFoundException(`Material with ID "${id}" not found`);
+    }
+
+    const diff = countedQuantity - material.currentStock;
+    if (diff === 0) {
+      return material;
+    }
+
+    return this.updateStock(id, diff);
+  }
 }

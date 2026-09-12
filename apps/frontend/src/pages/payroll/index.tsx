@@ -22,6 +22,7 @@ import {
   Loader2,
   AlertTriangle,
   ArrowRightLeft,
+  Package,
 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import {
@@ -345,6 +346,73 @@ function PayrollEditRow({
   );
 }
 
+// Read-only expandable row for Ishbay (piece-rate) report
+function IshbayRow({
+  user,
+  workerProd,
+  payroll,
+  formatCurrency: fmt,
+}: any) {
+  const [open, setOpen] = useState(false);
+  const totalQty = workerProd?.products?.reduce((sum: number, p: any) => sum + (p.qty || 0), 0) || 0;
+
+  return (
+    <>
+      <TableRow
+        className={cn('border-b border-border/20 hover:bg-muted/10 cursor-pointer', open && 'bg-muted/10')}
+        onClick={() => setOpen(!open)}
+      >
+        <TableCell className="sticky left-0 z-10 bg-card/95 border-r border-border/30">
+          <div className="flex items-center gap-2">
+            <ChevronRight className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform shrink-0', open && 'rotate-90')} />
+            <span className="text-xs font-medium text-foreground">{user.fullName}</span>
+          </div>
+        </TableCell>
+        <TableCell className="text-right text-xs text-muted-foreground">
+          {totalQty > 0 ? totalQty : '—'}
+        </TableCell>
+        <TableCell className="text-right text-xs font-semibold text-amber-400">
+          {fmt(workerProd?.total || 0)}
+        </TableCell>
+        <TableCell className="text-right">
+          {payroll ? (
+            <Badge
+              variant={payroll.status === 'PAID' ? 'success' : payroll.status === 'CONFIRMED' ? 'warning' : 'secondary'}
+              className="text-[10px] px-1.5 py-0"
+            >
+              {payroll.status === 'PAID' ? "To'langan" : payroll.status === 'CONFIRMED' ? 'Tasdiqlangan' : 'Qoralama'}
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">Hisoblanmagan</Badge>
+          )}
+        </TableCell>
+      </TableRow>
+
+      {open && (
+        <TableRow className="bg-muted/5 hover:bg-muted/5">
+          <TableCell colSpan={4} className="p-0">
+            <div className="px-6 py-4 ml-6 border-l-2 border-indigo-500/30 space-y-3">
+              {workerProd && workerProd.products.length > 0 ? (
+                <div className="flex flex-wrap gap-3">
+                  {workerProd.products.map((p: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 text-xs rounded-lg border border-border/30 px-2.5 py-1.5">
+                      <span className="text-foreground font-medium">{p.name}</span>
+                      <span className="text-muted-foreground">{p.qty} × {fmt(p.rate)}</span>
+                      <span className="text-amber-400 font-medium">= {fmt(p.total)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic">Ishlab chiqarish yozuvi yo'q</p>
+              )}
+            </div>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
+}
+
 export default function PayrollPage() {
   const navigate = useNavigate();
   const now = new Date();
@@ -631,6 +699,36 @@ export default function PayrollPage() {
     return { total, calculated, confirmed, totalPaid, totalRemaining };
   }, [users, payrolls]);
 
+  // Ishbay (piece-rate) worker summary
+  const pieceRateUsers = useMemo(
+    () => users.filter((u: any) => u.salaryType === 'PIECE_RATE'),
+    [users],
+  );
+
+  const payrollByUser = useMemo(() => {
+    const map: Record<string, any> = {};
+    for (const p of payrolls as any[]) {
+      const userId = typeof p.user === 'string' ? p.user : p.user?._id;
+      if (userId) map[userId] = p;
+    }
+    return map;
+  }, [payrolls]);
+
+  const ishbayStats = useMemo(() => {
+    let totalQty = 0;
+    let totalAmount = 0;
+    let calculated = 0;
+    for (const u of pieceRateUsers as any[]) {
+      const prod = prodSummary[u._id];
+      if (prod) {
+        totalAmount += prod.total;
+        totalQty += prod.products.reduce((sum: number, p: any) => sum + (p.qty || 0), 0);
+      }
+      if (payrollByUser[u._id]) calculated++;
+    }
+    return { workerCount: pieceRateUsers.length, totalQty, totalAmount, calculated };
+  }, [pieceRateUsers, prodSummary, payrollByUser]);
+
   // Month nav
   const goToPrevMonth = useCallback(() => {
     if (selectedMonth === 1) { setSelectedMonth(12); setSelectedYear((y) => y - 1); }
@@ -862,9 +960,62 @@ export default function PayrollPage() {
       {/* Tabs */}
       <Tabs defaultValue="payroll" className="space-y-5">
         <TabsList>
+          <TabsTrigger value="ishbay">Ishbay</TabsTrigger>
           <TabsTrigger value="payroll">Oylik hisoblash</TabsTrigger>
           <TabsTrigger value="advances">Avanslar</TabsTrigger>
         </TabsList>
+
+        {/* TAB 0: Ishbay (piece-rate report) */}
+        <TabsContent value="ishbay" className="space-y-5">
+          {!isLoading && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <StatCard title="Ishbay xodimlar" value={ishbayStats.workerCount} icon={Users} iconColor="text-indigo-400" iconBg="bg-indigo-500/20" index={0} />
+              <StatCard title="Jami ishlab chiqarilgan" value={ishbayStats.totalQty} icon={Package} iconColor="text-blue-400" iconBg="bg-blue-500/20" index={1} />
+              <StatCard title="Jami ishbay summa" value={formatCurrency(ishbayStats.totalAmount)} icon={Banknote} iconColor="text-amber-400" iconBg="bg-amber-500/20" index={2} />
+              <StatCard title="Hisoblangan" value={ishbayStats.calculated} icon={CheckCircle2} iconColor="text-green-400" iconBg="bg-green-500/20" index={3} />
+            </div>
+          )}
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-20"><LoadingSpinner size="lg" /></div>
+          ) : pieceRateUsers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <Package className="h-10 w-10 text-muted-foreground mb-3" />
+              <h3 className="text-lg font-semibold">Ishbay xodimlar topilmadi</h3>
+              <p className="text-sm text-muted-foreground mt-1">Ishbay turidagi xodimlar mavjud emas</p>
+            </div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-xl overflow-hidden"
+            >
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-b border-border/50 hover:bg-transparent text-[11px]">
+                      <TableHead className="sticky left-0 z-10 bg-card/95 min-w-[160px] border-r border-border/30">Xodim</TableHead>
+                      <TableHead className="min-w-[90px] text-right">Jami miqdor</TableHead>
+                      <TableHead className="min-w-[110px] text-right">Jami summa</TableHead>
+                      <TableHead className="min-w-[110px] text-right">Holat</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pieceRateUsers.map((u: any) => (
+                      <IshbayRow
+                        key={u._id}
+                        user={u}
+                        workerProd={prodSummary[u._id]}
+                        payroll={payrollByUser[u._id]}
+                        formatCurrency={formatCurrency}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </motion.div>
+          )}
+        </TabsContent>
 
         {/* TAB 1: Payroll */}
         <TabsContent value="payroll" className="space-y-5">

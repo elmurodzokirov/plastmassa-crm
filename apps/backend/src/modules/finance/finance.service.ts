@@ -10,6 +10,7 @@ import {
   SupplierPayment,
   SupplierPaymentDocument,
 } from '../suppliers/schemas/supplier-payment.schema';
+import { Return, ReturnDocument } from '../returns/schemas/return.schema';
 
 @Injectable()
 export class FinanceService {
@@ -26,6 +27,8 @@ export class FinanceService {
     private readonly supplierModel: Model<SupplierDocument>,
     @InjectModel(SupplierPayment.name)
     private readonly supplierPaymentModel: Model<SupplierPaymentDocument>,
+    @InjectModel(Return.name)
+    private readonly returnModel: Model<ReturnDocument>,
   ) {}
 
   async getDebtors() {
@@ -121,6 +124,215 @@ export class FinanceService {
     }
 
     return months;
+  }
+
+  /** Every income/expense event recorded today, merged into one chronological feed
+   *  for the "Kassa" tab's daily list. Each entry carries enough denormalized detail
+   *  for a read-only view dialog on the frontend, so no extra per-row fetch is needed. */
+  async getTodayTransactions() {
+    const { from, to } = this.buildTodayRange();
+    return this.buildTransactionsFeed(from, to, 'desc');
+  }
+
+  /** Every income/expense event recorded in the given period, merged into one
+   *  chronological feed (oldest first) with a running cash balance — powers the
+   *  "Kassa kitobi" (cash book) report. */
+  async getTransactions(dateFrom: string, dateTo: string) {
+    const { from, to } = this.buildDateRange(dateFrom, dateTo);
+    return this.buildTransactionsFeed(from, to, 'asc');
+  }
+
+  private async buildTransactionsFeed(
+    from: Date,
+    to: Date,
+    order: 'asc' | 'desc',
+  ) {
+    const [orders, payments, expenses, supplierPayments, returnRefunds] =
+      await Promise.all([
+        this.orderModel
+          .find({
+            createdAt: { $gte: from, $lte: to },
+            status: { $ne: 'CANCELLED' },
+            initialPaidAmount: { $gt: 0 },
+          })
+          .populate('customer', 'name phone')
+          .exec(),
+        this.paymentModel
+          .find({ createdAt: { $gte: from, $lte: to } })
+          .populate('customer', 'name phone')
+          .populate('order', 'orderNumber')
+          .exec(),
+        this.expenseModel
+          .find({ date: { $gte: from, $lte: to } })
+          .exec(),
+        this.supplierPaymentModel
+          .find({ createdAt: { $gte: from, $lte: to } })
+          .populate('supplier', 'name phone')
+          .exec(),
+        // Only "return from customer" documents that actually paid cash back
+        // (refundAmount > 0) show up here — the date used is approvedAt, since
+        // that's when the cash actually left the register, not when the return
+        // document was first drafted.
+        this.returnModel
+          .find({
+            status: 'APPROVED',
+            refundAmount: { $gt: 0 },
+            approvedAt: { $gte: from, $lte: to },
+          })
+          .populate('customer', 'name phone')
+          .exec(),
+      ]);
+
+    const transactions: any[] = [];
+
+    for (const order of orders) {
+      const customer = order.customer as any;
+      transactions.push({
+        _id: order._id.toString(),
+        type: 'ORDER_INCOME',
+        direction: 'IN',
+        amount: order.initialPaidAmount,
+        date: order.createdAt,
+        title: `Buyurtma ${order.orderNumber} — boshlang'ich to'lov`,
+        subtitle: customer?.name,
+        detail: {
+          orderNumber: order.orderNumber,
+          customerName: customer?.name,
+          customerPhone: customer?.phone,
+          paymentType: order.paymentType,
+          orderTotal: order.totalAmount,
+          items: (order.items || []).map((item: any) => ({
+            productName: item.productName,
+            quantity: item.quantity,
+            unitName: item.unitName,
+            price: item.price,
+            total: item.total,
+          })),
+        },
+      });
+    }
+
+    for (const payment of payments) {
+      const customer = payment.customer as any;
+      const order = payment.order as any;
+      transactions.push({
+        _id: payment._id.toString(),
+        type: 'PAYMENT',
+        direction: 'IN',
+        amount: payment.amount,
+        date: payment.createdAt,
+        title: "Mijozdan to'lov qabul qilindi",
+        subtitle: customer?.name,
+        detail: {
+          customerName: customer?.name,
+          customerPhone: customer?.phone,
+          orderNumber: order?.orderNumber,
+          paymentType: payment.type,
+          notes: payment.notes,
+        },
+      });
+    }
+
+    for (const expense of expenses) {
+      transactions.push({
+        _id: expense._id.toString(),
+        type: 'EXPENSE',
+        direction: 'OUT',
+        amount: expense.amount,
+        date: expense.date,
+        title: expense.category,
+        subtitle: expense.description,
+        detail: {
+          category: expense.category,
+          description: expense.description,
+          paymentMethod: expense.paymentMethod,
+          notes: expense.notes,
+        },
+      });
+    }
+
+    for (const sp of supplierPayments) {
+      const supplier = sp.supplier as any;
+      transactions.push({
+        _id: sp._id.toString(),
+        type: 'SUPPLIER_PAYMENT',
+        direction: 'OUT',
+        amount: sp.amount,
+        date: sp.createdAt,
+        title: "Yetkazib beruvchiga to'lov",
+        subtitle: supplier?.name,
+        detail: {
+          supplierName: supplier?.name,
+          supplierPhone: supplier?.phone,
+          paymentType: sp.type,
+          notes: sp.notes,
+        },
+      });
+    }
+
+    for (const ret of returnRefunds) {
+      const customer = ret.customer as any;
+      transactions.push({
+        _id: ret._id.toString(),
+        type: 'RETURN_REFUND',
+        direction: 'OUT',
+        amount: ret.refundAmount,
+        date: ret.approvedAt,
+        title: "Mijozga qaytarilgan pul",
+        subtitle: customer?.name,
+        detail: {
+          customerName: customer?.name,
+          customerPhone: customer?.phone,
+          reason: ret.reason,
+          returnTotal: ret.totalAmount,
+          items: (ret.items || []).map((item: any) => ({
+            productName: item.productName,
+            quantity: item.quantity,
+            unitName: item.unitName,
+            price: item.price,
+            total: item.total,
+          })),
+        },
+      });
+    }
+
+    transactions.sort((a, b) =>
+      order === 'asc'
+        ? new Date(a.date).getTime() - new Date(b.date).getTime()
+        : new Date(b.date).getTime() - new Date(a.date).getTime(),
+    );
+
+    // Running balance is computed in chronological order regardless of the
+    // array's display order, then attached to each (shared) transaction object.
+    const chronological =
+      order === 'asc' ? transactions : [...transactions].reverse();
+    let runningBalance = 0;
+    for (const t of chronological) {
+      runningBalance += t.direction === 'IN' ? t.amount : -t.amount;
+      t.balance = runningBalance;
+    }
+
+    const totalIncome = transactions
+      .filter((t) => t.direction === 'IN')
+      .reduce((sum, t) => sum + t.amount, 0);
+    const totalExpense = transactions
+      .filter((t) => t.direction === 'OUT')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    return {
+      items: transactions,
+      totalIncome,
+      totalExpense,
+      closingBalance: runningBalance,
+    };
+  }
+
+  private buildTodayRange() {
+    const from = new Date();
+    from.setHours(0, 0, 0, 0);
+    const to = new Date();
+    to.setHours(23, 59, 59, 999);
+    return { from, to };
   }
 
   async getSummary() {

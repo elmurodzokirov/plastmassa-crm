@@ -59,4 +59,9 @@ export class CreateProductionLogDto {
   @IsOptional()
   @IsEnum(['PENDING', 'APPROVED'])
   status?: string;
+
+  /** Internal use: shared identifier when this log is one line of a multi-product batch. */
+  @IsOptional()
+  @IsString()
+  batchNumber?: string;
 }

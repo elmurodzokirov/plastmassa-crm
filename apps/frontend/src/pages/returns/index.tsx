@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type {
   Order,
+  Customer,
   Return as ReturnEntity,
   User,
 } from '@plastmassa/shared';
@@ -44,7 +45,10 @@ const STATUS_MAP: Record<string, { label: string; variant: 'warning' | 'success'
   APPROVED: { label: 'Tasdiqlangan', variant: 'success' },
 };
 
-function getOrderNumber(order: string | Order) {
+function getOrderNumber(order?: string | Order) {
+  if (!order) {
+    return null;
+  }
   if (typeof order === 'string') {
     return order.slice(-6);
   }
@@ -52,12 +56,23 @@ function getOrderNumber(order: string | Order) {
   return order.orderNumber || order._id.slice(-6);
 }
 
-function getOrderId(order: string | Order) {
+function getOrderId(order?: string | Order) {
+  if (!order) {
+    return null;
+  }
   if (typeof order === 'string') {
     return order;
   }
 
   return order._id;
+}
+
+function getCustomerName(customer: string | Customer) {
+  if (typeof customer === 'string') {
+    return customer.slice(-6);
+  }
+
+  return customer.name;
 }
 
 function getUserName(user?: string | User) {
@@ -248,6 +263,8 @@ export default function ReturnsPage() {
               <TableBody>
                 {items.map((item) => {
                   const statusInfo = STATUS_MAP[item.status] || STATUS_MAP.PENDING;
+                  const orderNumber = getOrderNumber(item.order);
+                  const orderId = getOrderId(item.order);
 
                   return (
                     <TableRow key={item._id}>
@@ -255,7 +272,7 @@ export default function ReturnsPage() {
                         {format(new Date(item.createdAt), 'dd.MM.yyyy HH:mm')}
                       </TableCell>
                       <TableCell className="font-medium">
-                        #{getOrderNumber(item.order)}
+                        {orderNumber ? `#${orderNumber}` : getCustomerName(item.customer)}
                       </TableCell>
                       <TableCell className="hidden max-w-[18rem] truncate text-muted-foreground lg:table-cell">
                         {item.reason}
@@ -274,15 +291,17 @@ export default function ReturnsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => navigate(`/orders/${getOrderId(item.order)}`)}
-                            className="gap-1"
-                          >
-                            <ArrowRight className="h-3.5 w-3.5" />
-                            Buyurtma
-                          </Button>
+                          {orderId && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => navigate(`/orders/${orderId}`)}
+                              className="gap-1"
+                            >
+                              <ArrowRight className="h-3.5 w-3.5" />
+                              Buyurtma
+                            </Button>
+                          )}
                           {canApproveReturns && item.status === 'PENDING' && (
                             <Button
                               size="sm"
@@ -338,7 +357,13 @@ export default function ReturnsPage() {
         title="Qaytarishni tasdiqlash"
         description={
           selectedReturn
-            ? `#${getOrderNumber(selectedReturn.order)} buyurtma uchun ${formatCurrency(selectedReturn.totalAmount)} qaytarishni tasdiqlaysizmi?`
+            ? (() => {
+                const orderNumber = getOrderNumber(selectedReturn.order);
+                const target = orderNumber
+                  ? `#${orderNumber} buyurtma uchun`
+                  : `${getCustomerName(selectedReturn.customer)} mijoz uchun`;
+                return `${target} ${formatCurrency(selectedReturn.totalAmount)} qaytarishni tasdiqlaysizmi?`;
+              })()
             : ''
         }
         onConfirm={handleApprove}

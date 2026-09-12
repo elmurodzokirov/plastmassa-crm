@@ -16,6 +16,7 @@ import {
   ChevronRight,
   AlertTriangle,
   Wallet,
+  ClipboardList,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Material, Unit } from '@plastmassa/shared';
@@ -32,6 +33,7 @@ import { useUnits } from '@/hooks/use-units';
 import { useSuppliers } from '@/hooks/use-suppliers';
 import { MaterialQuery } from '@/api/materials';
 import { toast } from '@/components/ui/use-toast';
+import { MaterialStockTakeDialog } from './material-stock-take-dialog';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -113,6 +115,7 @@ export default function MaterialsPage() {
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingMaterial, setDeletingMaterial] = useState<Material | null>(null);
+  const [stockTakeOpen, setStockTakeOpen] = useState(false);
 
   const queryParams: MaterialQuery = {
     page,
@@ -125,6 +128,7 @@ export default function MaterialsPage() {
   };
 
   const { data: materialsData, isLoading } = useMaterials(queryParams);
+  const { data: allMaterialsData } = useMaterials({ limit: 1000, sortBy: 'name', sortOrder: 'asc' });
   const { data: units, isLoading: isLoadingUnits } = useUnits();
   const { data: stats } = useMaterialStats();
   const { data: categories } = useMaterialCategories();
@@ -146,6 +150,7 @@ export default function MaterialsPage() {
   });
 
   const materials = materialsData?.items || [];
+  const allMaterials = allMaterialsData?.items || [];
   const totalPages = materialsData?.totalPages || 1;
   const totalCount = materialsData?.total || 0;
 
@@ -243,10 +248,16 @@ export default function MaterialsPage() {
           <h1 className="text-2xl font-bold text-foreground">Xom-ashyo</h1>
           <p className="text-sm text-muted-foreground mt-1">Jami {totalCount} ta xom-ashyo</p>
         </div>
-        <Button onClick={openCreateDialog} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Yangi xom-ashyo
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setStockTakeOpen(true)} className="gap-2">
+            <ClipboardList className="h-4 w-4" />
+            Inventarizatsiya
+          </Button>
+          <Button onClick={openCreateDialog} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Yangi xom-ashyo
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -537,6 +548,12 @@ export default function MaterialsPage() {
         onConfirm={handleDelete}
         loading={deleteMutation.isPending}
         variant="destructive"
+      />
+
+      <MaterialStockTakeDialog
+        open={stockTakeOpen}
+        onOpenChange={setStockTakeOpen}
+        materials={allMaterials}
       />
     </div>
   );

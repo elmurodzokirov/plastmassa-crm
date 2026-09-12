@@ -641,10 +641,16 @@ export interface ReturnItem {
 
 export interface Return {
   _id: string;
-  order: string | Order;
+  // Unset for order-independent "return from customer" documents — use
+  // `customer` instead in that case.
+  order?: string | Order;
+  customer: string | Customer;
   items: ReturnItem[];
   reason: string;
   totalAmount: number;
+  // Cash handed back to the customer; the remainder (totalAmount - refundAmount)
+  // is settled against the customer's account instead.
+  refundAmount: number;
   status: ReturnStatus;
   approvedBy?: string | User;
   approvedAt?: string;

@@ -192,7 +192,9 @@ export class RecipesService {
         const neededQty =
           item.quantityPerUnit * (1 + (item.wastagePercent || 0) / 100) * quantityProduced;
 
-        const lotConsumptions = await this.materialLotsService.consumeFIFO(materialId, neededQty);
+        const lotConsumptions = await this.materialLotsService.consumeFIFO(materialId, neededQty, {
+          allowShortfall: true,
+        });
         await this.materialsService.updateStock(materialId, -neededQty);
         consumedForRollback.push({ materialId, qty: neededQty, consumptions: lotConsumptions });
 

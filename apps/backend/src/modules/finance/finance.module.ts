@@ -11,6 +11,7 @@ import {
   SupplierPayment,
   SupplierPaymentSchema,
 } from '../suppliers/schemas/supplier-payment.schema';
+import { Return, ReturnSchema } from '../returns/schemas/return.schema';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import {
       { name: Order.name, schema: OrderSchema },
       { name: Supplier.name, schema: SupplierSchema },
       { name: SupplierPayment.name, schema: SupplierPaymentSchema },
+      { name: Return.name, schema: ReturnSchema },
     ]),
   ],
   controllers: [FinanceController],
