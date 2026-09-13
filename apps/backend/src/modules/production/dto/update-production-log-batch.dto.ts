@@ -7,6 +7,7 @@ import {
   IsArray,
   ArrayMinSize,
   ValidateNested,
+  IsEnum,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -23,6 +24,11 @@ export class UpdateProductionLogBatchItemDto {
   @IsNumber()
   @Min(0.001)
   quantityProduced: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  quantityDefective?: number;
 }
 
 export class UpdateProductionLogBatchDto {
@@ -37,6 +43,19 @@ export class UpdateProductionLogBatchDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  machine?: string;
+
+  @IsOptional()
+  @IsEnum(['DAY', 'NIGHT'])
+  shift?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  hoursWorked?: number;
 
   @IsArray()
   @ArrayMinSize(1)

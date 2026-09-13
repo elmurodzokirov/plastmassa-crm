@@ -98,6 +98,26 @@ export class ProductionLog {
   @Prop({ required: true, min: 0 })
   quantityProduced: number;
 
+  // Simplified stanok/smena tracking (OEE-lite): machine + shift + hours worked are
+  // shared across every line of one batch/document (like worker/date), while
+  // quantityDefective is per-line (like quantityProduced), since defect counts can
+  // differ by product within the same shift. Purely additive — none of this affects
+  // stock, lots, StockMovement records, or earnedAmount/pieceRateAmount math.
+  @Prop({ type: Types.ObjectId, ref: 'Machine' })
+  machine?: Types.ObjectId;
+
+  @Prop({ trim: true })
+  machineName?: string;
+
+  @Prop({ enum: ['DAY', 'NIGHT'] })
+  shift?: string;
+
+  @Prop({ min: 0 })
+  hoursWorked?: number;
+
+  @Prop({ default: 0, min: 0 })
+  quantityDefective: number;
+
   @Prop({ type: [MaterialUsedSchema], default: [] })
   materialsUsed: MaterialUsed[];
 

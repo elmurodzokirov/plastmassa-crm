@@ -27,6 +27,7 @@ import { MaterialsModule } from './modules/materials/materials.module';
 import { MaterialLotsModule } from './modules/material-lots/material-lots.module';
 import { RecipesModule } from './modules/recipes/recipes.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
+import { MachinesModule } from './modules/machines/machines.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseTransformInterceptor } from './common/interceptors/response-transform.interceptor';
 import { AuditLogMiddleware } from './common/middleware/audit-log.middleware';
@@ -75,6 +76,7 @@ import { AuditLogMiddleware } from './common/middleware/audit-log.middleware';
     MaterialLotsModule,
     RecipesModule,
     SuppliersModule,
+    MachinesModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: HttpExceptionFilter },

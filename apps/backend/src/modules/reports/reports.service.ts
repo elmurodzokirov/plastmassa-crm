@@ -270,11 +270,43 @@ export class ReportsService {
       ])
       .exec();
 
+    // By machine (Stanoklar yuki — simplified: hours worked + defect qty/rate, no OEE)
+    const byMachineRaw = await this.productionLogModel
+      .aggregate([
+        { $match: matchStage },
+        {
+          $group: {
+            _id: { $ifNull: ['$machineName', "Stanok ko'rsatilmagan"] },
+            totalHoursWorked: { $sum: { $ifNull: ['$hoursWorked', 0] } },
+            totalQuantityGood: { $sum: '$quantityProduced' },
+            totalQuantityDefective: { $sum: { $ifNull: ['$quantityDefective', 0] } },
+          },
+        },
+        { $sort: { totalQuantityGood: -1 } },
+        {
+          $project: {
+            _id: 0,
+            machineName: '$_id',
+            totalHoursWorked: 1,
+            totalQuantityGood: 1,
+            totalQuantityDefective: 1,
+          },
+        },
+      ])
+      .exec();
+
+    const byMachine = byMachineRaw.map((m) => {
+      const totalQuantity = m.totalQuantityGood + m.totalQuantityDefective;
+      const defectRate = totalQuantity > 0 ? (m.totalQuantityDefective / totalQuantity) * 100 : 0;
+      return { ...m, defectRate };
+    });
+
     return {
       totalProduced,
       totalEarned,
       byProduct,
       byWorker,
+      byMachine,
       dailyBreakdown,
     };
   }

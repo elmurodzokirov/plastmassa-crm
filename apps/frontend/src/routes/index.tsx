@@ -27,6 +27,7 @@ const OrderCheckPage = lazy(() => import('@/pages/orders/check'));
 const ReturnsPage = lazy(() => import('@/pages/returns/index'));
 const NewCustomerReturnPage = lazy(() => import('@/pages/returns/new'));
 const ProductionPage = lazy(() => import('@/pages/production/index'));
+const MachinesPage = lazy(() => import('@/pages/machines/index'));
 const AttendancePage = lazy(() => import('@/pages/attendance/index'));
 const PayrollPage = lazy(() => import('@/pages/payroll/index'));
 const PayrollSlipPage = lazy(() => import('@/pages/payroll/PayrollSlipPage'));
@@ -82,6 +83,7 @@ export function AppRoutes() {
           <Route path="materials/:id" element={<PermissionRoute permission="products:read"><MaterialDetailPage /></PermissionRoute>} />
           <Route path="suppliers" element={<PermissionRoute permission="products:read"><SuppliersPage /></PermissionRoute>} />
           <Route path="production" element={<PermissionRoute permission="production:read"><ProductionPage /></PermissionRoute>} />
+          <Route path="machines" element={<PermissionRoute permission="production:read"><MachinesPage /></PermissionRoute>} />
 
           {/* Kadrlar */}
           <Route path="attendance" element={<PermissionRoute permission="attendance:read"><AttendancePage /></PermissionRoute>} />

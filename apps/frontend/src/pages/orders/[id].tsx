@@ -183,10 +183,11 @@ export default function OrderDetailPage() {
       });
       setConfirmDialogOpen(false);
       setPendingStatus(null);
-    } catch {
+    } catch (error: any) {
       toast({
         title: 'Xatolik',
-        description: "Holatni o'zgartirishda xatolik yuz berdi",
+        description:
+          error?.response?.data?.message || "Holatni o'zgartirishda xatolik yuz berdi",
         variant: 'destructive',
       });
     }

@@ -87,6 +87,19 @@ export interface UnitConversion {
   factor: number;
 }
 
+// Machine (Stanoklar — simplified stanok/smena tracking)
+export interface Machine {
+  _id: string;
+  name: string;
+  model?: string;
+  notes?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ProductionShift = 'DAY' | 'NIGHT';
+
 // Customer (Sprint 1)
 export interface Customer {
   _id: string;
@@ -377,6 +390,11 @@ export interface ProductionLog {
   unitName: string;
   date: string;
   quantityProduced: number;
+  quantityDefective?: number;
+  machine?: string | Machine;
+  machineName?: string;
+  shift?: ProductionShift;
+  hoursWorked?: number;
   totalMaterialCost: number;
   costPerUnitProduced: number;
   earnedAmount: number;
@@ -641,16 +659,10 @@ export interface ReturnItem {
 
 export interface Return {
   _id: string;
-  // Unset for order-independent "return from customer" documents — use
-  // `customer` instead in that case.
-  order?: string | Order;
-  customer: string | Customer;
+  order: string | Order;
   items: ReturnItem[];
   reason: string;
   totalAmount: number;
-  // Cash handed back to the customer; the remainder (totalAmount - refundAmount)
-  // is settled against the customer's account instead.
-  refundAmount: number;
   status: ReturnStatus;
   approvedBy?: string | User;
   approvedAt?: string;

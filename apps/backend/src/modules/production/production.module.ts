@@ -10,6 +10,7 @@ import { RecipesModule } from '../recipes/recipes.module';
 import { MaterialsModule } from '../materials/materials.module';
 import { MaterialLotsModule } from '../material-lots/material-lots.module';
 import { UsersModule } from '../users/users.module';
+import { MachinesModule } from '../machines/machines.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { UsersModule } from '../users/users.module';
     MaterialsModule,
     MaterialLotsModule,
     UsersModule,
+    MachinesModule,
   ],
   controllers: [ProductionController],
   providers: [ProductionService],

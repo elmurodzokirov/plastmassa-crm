@@ -18,6 +18,7 @@ import { RecipesService } from '../recipes/recipes.service';
 import { MaterialsService } from '../materials/materials.service';
 import { MaterialLotsService } from '../material-lots/material-lots.service';
 import { UsersService } from '../users/users.service';
+import { MachinesService } from '../machines/machines.service';
 
 export interface BatchGroup {
   batchNumber: string;
@@ -44,6 +45,7 @@ export class ProductionService {
     private readonly materialsService: MaterialsService,
     private readonly materialLotsService: MaterialLotsService,
     private readonly usersService: UsersService,
+    private readonly machinesService: MachinesService,
   ) {}
 
   /**
@@ -159,6 +161,12 @@ export class ProductionService {
       ? (product.baseUnit as any).name || ''
       : '';
 
+    let machineName: string | undefined;
+    if (dto.machine) {
+      const machine = await this.machinesService.findById(dto.machine);
+      machineName = machine.name;
+    }
+
     const log = new this.productionLogModel({
       product: dto.product,
       productName: product.name,
@@ -166,6 +174,11 @@ export class ProductionService {
       unitName: productUnitName,
       date: new Date(dto.date),
       quantityProduced: dto.quantityProduced,
+      quantityDefective: dto.quantityDefective || 0,
+      machine: dto.machine || undefined,
+      machineName,
+      shift: dto.shift,
+      hoursWorked: dto.hoursWorked,
       materialsUsed,
       totalMaterialCost,
       costPerUnitProduced,
@@ -432,8 +445,12 @@ export class ProductionService {
           product: item.product,
           date: dto.date,
           quantityProduced: item.quantityProduced,
+          quantityDefective: item.quantityDefective,
           worker: dto.worker,
           notes: dto.notes,
+          machine: dto.machine,
+          shift: dto.shift,
+          hoursWorked: dto.hoursWorked,
           status: 'APPROVED',
           batchNumber,
         } as CreateProductionLogDto,
@@ -571,6 +588,10 @@ export class ProductionService {
       date: logs[0].date,
       worker: logs[0].worker,
       notes: logs[0].notes,
+      machine: logs[0].machine,
+      machineName: logs[0].machineName,
+      shift: logs[0].shift,
+      hoursWorked: logs[0].hoursWorked,
       items,
       editHistory,
     };
@@ -595,6 +616,12 @@ export class ProductionService {
     if (dto.worker) {
       const newWorkerUser = await this.usersService.findById(dto.worker);
       newWorkerName = newWorkerUser.fullName;
+    }
+
+    let newMachineName: string | undefined;
+    if (dto.machine) {
+      const newMachine = await this.machinesService.findById(dto.machine);
+      newMachineName = newMachine.name;
     }
 
     for (const item of dto.items) {
@@ -704,6 +731,21 @@ export class ProductionService {
           }
         }
 
+        // Brak miqdori (defect quantity) is per-line, like quantityProduced, but does
+        // not touch stock/lots — so it stays editable even when the line is locked.
+        const newQuantityDefective = item.quantityDefective || 0;
+        if (newQuantityDefective !== (log.quantityDefective || 0)) {
+          log.editHistory.push({
+            user: new Types.ObjectId(userId),
+            userName,
+            changedAt: now,
+            field: 'Brak miqdori',
+            oldValue: String(log.quantityDefective || 0),
+            newValue: String(newQuantityDefective),
+          } as any);
+          log.quantityDefective = newQuantityDefective;
+        }
+
         // Batch-level fields (worker/date/notes) apply to every line, and are
         // recorded on each line's own history so each document's story stays complete.
         if (dto.worker !== undefined && dto.worker !== log.worker.toString()) {
@@ -743,6 +785,40 @@ export class ProductionService {
           } as any);
           log.notes = dto.notes;
         }
+        if (dto.machine !== undefined && dto.machine !== (log.machine ? log.machine.toString() : '')) {
+          log.editHistory.push({
+            user: new Types.ObjectId(userId),
+            userName,
+            changedAt: now,
+            field: 'Stanok',
+            oldValue: log.machineName || '',
+            newValue: newMachineName || '',
+          } as any);
+          log.machine = dto.machine ? new Types.ObjectId(dto.machine) : undefined;
+          log.machineName = newMachineName;
+        }
+        if (dto.shift !== undefined && dto.shift !== (log.shift || '')) {
+          log.editHistory.push({
+            user: new Types.ObjectId(userId),
+            userName,
+            changedAt: now,
+            field: 'Smena',
+            oldValue: log.shift === 'DAY' ? 'Kunduzgi' : log.shift === 'NIGHT' ? 'Tungi' : '',
+            newValue: dto.shift === 'DAY' ? 'Kunduzgi' : dto.shift === 'NIGHT' ? 'Tungi' : '',
+          } as any);
+          log.shift = dto.shift;
+        }
+        if (dto.hoursWorked !== undefined && dto.hoursWorked !== (log.hoursWorked || 0)) {
+          log.editHistory.push({
+            user: new Types.ObjectId(userId),
+            userName,
+            changedAt: now,
+            field: 'Ish soati',
+            oldValue: String(log.hoursWorked || 0),
+            newValue: String(dto.hoursWorked),
+          } as any);
+          log.hoursWorked = dto.hoursWorked;
+        }
 
         await log.save();
       } else {
@@ -752,8 +828,12 @@ export class ProductionService {
             product: item.product,
             date: dto.date || existingLogs[0].date.toISOString(),
             quantityProduced: item.quantityProduced,
+            quantityDefective: item.quantityDefective,
             worker: dto.worker || existingLogs[0].worker.toString(),
             notes: dto.notes !== undefined ? dto.notes : existingLogs[0].notes,
+            machine: dto.machine !== undefined ? dto.machine : existingLogs[0].machine?.toString(),
+            shift: dto.shift !== undefined ? dto.shift : existingLogs[0].shift,
+            hoursWorked: dto.hoursWorked !== undefined ? dto.hoursWorked : existingLogs[0].hoursWorked,
             status: 'APPROVED',
             batchNumber,
           } as CreateProductionLogDto,

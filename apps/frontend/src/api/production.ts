@@ -9,6 +9,11 @@ export interface ProductionLogData {
   unitName: string;
   date: string;
   quantityProduced: number;
+  quantityDefective?: number;
+  machine?: any;
+  machineName?: string;
+  shift?: 'DAY' | 'NIGHT';
+  hoursWorked?: number;
   materialsUsed: any[];
   totalMaterialCost: number;
   costPerUnitProduced: number;
@@ -61,6 +66,10 @@ export interface ProductionBatchDetail {
   date: string;
   worker: any;
   notes?: string;
+  machine?: any;
+  machineName?: string;
+  shift?: 'DAY' | 'NIGHT';
+  hoursWorked?: number;
   items: (ProductionLogData & { locked: boolean })[];
   editHistory: ProductionBatchEdit[];
 }
@@ -78,12 +87,16 @@ export interface ProductionBatchQuery {
 export interface CreateProductionLogBatchItemInput {
   product: string;
   quantityProduced: number;
+  quantityDefective?: number;
 }
 
 export interface CreateProductionLogBatchInput {
   worker: string;
   date: string;
   notes?: string;
+  machine?: string;
+  shift?: 'DAY' | 'NIGHT';
+  hoursWorked?: number;
   items: CreateProductionLogBatchItemInput[];
 }
 
@@ -91,12 +104,16 @@ export interface UpdateProductionLogBatchItemInput {
   _id?: string;
   product: string;
   quantityProduced: number;
+  quantityDefective?: number;
 }
 
 export interface UpdateProductionLogBatchInput {
   worker?: string;
   date?: string;
   notes?: string;
+  machine?: string;
+  shift?: 'DAY' | 'NIGHT';
+  hoursWorked?: number;
   items: UpdateProductionLogBatchItemInput[];
 }
 

@@ -34,6 +34,7 @@ import {
 } from '@/hooks/use-production';
 import { useProducts } from '@/hooks/use-products';
 import { useUsers } from '@/hooks/use-users';
+import { useMachines } from '@/hooks/use-machines';
 import { useActiveRecipe } from '@/hooks/use-recipes';
 import type { ProductionBatchQuery } from '@/api/production';
 import { toast } from '@/components/ui/use-toast';
@@ -58,6 +59,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ProductSearchSelect } from '@/components/shared/product-search-select';
 import { UserSearchSelect } from '@/components/shared/user-search-select';
 import { ProductionBatchDetailDialog } from '@/components/production/production-batch-detail-dialog';
@@ -101,6 +109,7 @@ function useDebounce<T>(value: T, delay: number): T {
 const productionItemSchema = z.object({
   product: z.string().min(1, 'Mahsulot tanlang'),
   quantityProduced: z.coerce.number().min(1, "Miqdor 0 dan katta bo'lishi kerak"),
+  quantityDefective: z.coerce.number().min(0, "Brak miqdori 0 dan kam bo'lmasligi kerak").optional(),
 });
 
 const createLogSchema = z.object({
@@ -108,6 +117,9 @@ const createLogSchema = z.object({
   date: z.string().min(1, 'Sana tanlang'),
   items: z.array(productionItemSchema).min(1, "Kamida bitta mahsulot qo'shing"),
   notes: z.string().optional(),
+  machine: z.string().optional(),
+  shift: z.enum(['DAY', 'NIGHT']).optional(),
+  hoursWorked: z.coerce.number().min(0, "Ish soati 0 dan kam bo'lmasligi kerak").optional(),
 });
 
 type CreateLogFormData = z.infer<typeof createLogSchema>;
@@ -163,6 +175,9 @@ function ProductionItemRow({
   const { ref: quantityRegisterRef, ...quantityRegisterRest } = register(
     `items.${index}.quantityProduced`,
   );
+  const { ref: defectiveRegisterRef, ...defectiveRegisterRest } = register(
+    `items.${index}.quantityDefective`,
+  );
 
   return (
     <div
@@ -180,7 +195,7 @@ function ProductionItemRow({
           <Trash2 className="h-4 w-4" />
         </button>
       )}
-      <div className={cn('grid grid-cols-3 gap-3', canRemove && 'pr-6')}>
+      <div className={cn('grid grid-cols-4 gap-3', canRemove && 'pr-6')}>
         <div className="col-span-2 space-y-2">
           <Label className="text-xs">
             Mahsulot <span className="text-destructive">*</span>
@@ -224,6 +239,23 @@ function ProductionItemRow({
             <p className="text-xs text-destructive">{(errors.items as any)[index].quantityProduced.message}</p>
           )}
         </div>
+        <div className="space-y-2">
+          <Label className="text-xs">Brak miqdori</Label>
+          <Input
+            type="number"
+            min={0}
+            step="any"
+            placeholder="0"
+            onFocus={(e) => e.target.select()}
+            ref={(el) => {
+              defectiveRegisterRef(el);
+            }}
+            {...defectiveRegisterRest}
+          />
+          {(errors.items as any)?.[index]?.quantityDefective && (
+            <p className="text-xs text-destructive">{(errors.items as any)[index].quantityDefective.message}</p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -262,6 +294,7 @@ export default function ProductionPage() {
   });
   const { data: productsData } = useProducts({ limit: 9999, isActive: true });
   const { data: usersData } = useUsers({ limit: 9999 });
+  const { data: machines } = useMachines();
   const createLogsBatchMutation = useCreateProductionLogBatch();
 
   const batches = batchesData?.items || [];
@@ -278,7 +311,7 @@ export default function ProductionPage() {
   const products = productsData?.items || [];
   const workers = usersData?.items || [];
 
-  const emptyItem = { product: '', quantityProduced: 1 };
+  const emptyItem = { product: '', quantityProduced: 1, quantityDefective: 0 };
 
   const {
     register,
@@ -296,6 +329,9 @@ export default function ProductionPage() {
       date: todayStr,
       items: [emptyItem],
       notes: '',
+      machine: '',
+      shift: undefined,
+      hoursWorked: undefined,
     },
   });
 
@@ -327,6 +363,9 @@ export default function ProductionPage() {
       date: todayStr,
       items: [emptyItem],
       notes: '',
+      machine: '',
+      shift: undefined,
+      hoursWorked: undefined,
     });
     setCreateDialogOpen(true);
   }, [reset, todayStr]);
@@ -433,9 +472,13 @@ export default function ProductionPage() {
           worker: data.worker,
           date: data.date,
           notes: data.notes,
+          machine: data.machine || undefined,
+          shift: data.shift || undefined,
+          hoursWorked: data.hoursWorked,
           items: data.items.map((it) => ({
             product: it.product,
             quantityProduced: it.quantityProduced,
+            quantityDefective: it.quantityDefective || 0,
           })),
         });
         if (options?.print) {
@@ -761,6 +804,59 @@ export default function ProductionPage() {
               {errors.date && (
                 <p className="text-xs text-destructive">{errors.date.message}</p>
               )}
+            </div>
+
+            {/* Stanok / Smena / Ish soati (simplified stanok-yuki tracking) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label>Stanok</Label>
+                <Select
+                  value={watch('machine') || 'none'}
+                  onValueChange={(value) => setValue('machine', value === 'none' ? '' : value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Stanokni tanlang" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanlanmagan</SelectItem>
+                    {machines?.map((m) => (
+                      <SelectItem key={m._id} value={m._id}>{m.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Smena</Label>
+                <Select
+                  value={watch('shift') || 'none'}
+                  onValueChange={(value) =>
+                    setValue('shift', value === 'none' ? undefined : (value as 'DAY' | 'NIGHT'))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Smenani tanlang" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanlanmagan</SelectItem>
+                    <SelectItem value="DAY">Kunduzgi</SelectItem>
+                    <SelectItem value="NIGHT">Tungi</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Ish soati</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="any"
+                  placeholder="0"
+                  onFocus={(e) => e.target.select()}
+                  {...register('hoursWorked')}
+                />
+                {errors.hoursWorked && (
+                  <p className="text-xs text-destructive">{errors.hoursWorked.message}</p>
+                )}
+              </div>
             </div>
 
             {/* Product rows */}

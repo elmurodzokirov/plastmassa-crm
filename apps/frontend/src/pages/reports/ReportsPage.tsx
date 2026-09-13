@@ -3,19 +3,6 @@ import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  Legend,
-  PieChart,
-  Pie,
-  Cell,
-} from 'recharts';
-import {
   ShoppingCart,
   DollarSign,
   BarChart3,
@@ -36,10 +23,6 @@ import {
   Receipt,
   Banknote,
   Shield,
-  TrendingUp,
-  TrendingDown,
-  LineChart,
-  PieChartIcon,
 } from 'lucide-react';
 import { cn, formatCurrency, formatNumber } from '@/lib/utils';
 import {
@@ -50,21 +33,14 @@ import {
   useSupplierReconciliation,
 } from '@/hooks/use-reports';
 import { useSuppliers } from '@/hooks/use-suppliers';
-import { useTransactions, useExpenses, useProfitAndLoss } from '@/hooks/use-finance';
+import { useTransactions, useExpenses } from '@/hooks/use-finance';
 import { usePayrolls } from '@/hooks/use-payroll';
-import { useDashboardStats, useSalesChart } from '@/hooks/use-dashboard';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -101,31 +77,7 @@ const MONTH_NAMES = [
   'Dekabr',
 ];
 
-const MONTH_SHORT = [
-  'Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyun',
-  'Iyul', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek',
-];
 
-const PIE_COLORS = ['#6366f1', '#8b5cf6', '#06b6d4', '#f59e0b', '#ef4444'];
-
-// ── Helper: revenue chart tooltip ───────────────────────────────────
-
-function ChartTooltip({ active, payload, label }: any): React.ReactNode {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-lg border border-border/80 bg-card px-3 py-2 shadow-lg">
-      <p className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-        {label}
-      </p>
-      {payload.map((entry: any, idx: number) => (
-        <p key={idx} className="text-sm" style={{ color: entry.color }}>
-          <span className="text-muted-foreground">{entry.name}: </span>
-          <span className="font-semibold">{formatCurrency(entry.value)}</span>
-        </p>
-      ))}
-    </div>
-  );
-}
 
 // ── Helper: get month range ──────────────────────────────────────────
 
@@ -152,7 +104,7 @@ const DEPARTMENT_DEFAULT_TAB: Record<string, string> = {
   sotuv: 'sales',
   ombor: 'production',
   kadrlar: 'attendance',
-  moliya: 'revenue',
+  moliya: 'cash-book',
 };
 
 export default function ReportsPage() {
@@ -189,13 +141,6 @@ export default function ReportsPage() {
   // ── Employee payments (Hodimlarga to'lov) tab state ───────────────
   const [ppYear, setPpYear] = useState(now.getFullYear());
   const [ppMonth, setPpMonth] = useState(now.getMonth() + 1);
-
-  // ── Revenue (Daromadlar) tab state ────────────────────────────────
-  const [chartPeriod, setChartPeriod] = useState<'year' | 'month' | 'day'>('month');
-  const [chartYear, setChartYear] = useState(now.getFullYear());
-  const [chartMonth, setChartMonth] = useState(now.getMonth() + 1);
-  const [plDateFrom, setPlDateFrom] = useState(defaultRange.dateFrom);
-  const [plDateTo, setPlDateTo] = useState(defaultRange.dateTo);
 
   // ── Queries ────────────────────────────────────────────────────────
 
@@ -246,19 +191,6 @@ export default function ReportsPage() {
   );
   const { data: ppData, isLoading: ppLoading } = usePayrolls(ppParams);
 
-  const { data: stats } = useDashboardStats();
-  const { data: salesChartData, isLoading: salesChartLoading } = useSalesChart(
-    chartPeriod,
-    chartPeriod !== 'year' ? chartYear : undefined,
-    chartPeriod === 'day' ? chartMonth : undefined,
-  );
-
-  const plParams = useMemo(
-    () => ({ dateFrom: plDateFrom, dateTo: plDateTo }),
-    [plDateFrom, plDateTo],
-  );
-  const { data: plData, isLoading: plLoading } = useProfitAndLoss(plParams);
-
   // ── Derived data ───────────────────────────────────────────────────
 
   const salesPeriods = salesData?.byPeriod || [];
@@ -267,6 +199,7 @@ export default function ReportsPage() {
 
   const prodByProduct = prodData?.byProduct || [];
   const prodByWorker = prodData?.byWorker || [];
+  const prodByMachine = prodData?.byMachine || [];
   const prodDaily = prodData?.daily || [];
 
   const stockProducts = stockData?.products || [];
@@ -278,48 +211,6 @@ export default function ReportsPage() {
   const expensesItems = expensesData?.items || [];
 
   const ppItems = ppData?.items || [];
-
-  const chartItems = useMemo(() => {
-    if (!Array.isArray(salesChartData)) return [];
-    return salesChartData.map((d) => ({
-      name: chartPeriod === 'year' ? String(d.year)
-        : chartPeriod === 'month' ? MONTH_SHORT[(d.month || 1) - 1]
-        : String(d.day || ''),
-      savdo: d.totalSales,
-      daromad: d.grossProfit,
-      buyurtmalar: d.orderCount,
-    }));
-  }, [salesChartData, chartPeriod]);
-
-  // Pie chart: savdo vs daromad (jami)
-  const pieData = useMemo(() => {
-    if (!chartItems.length) return [];
-    const totalSales = chartItems.reduce((s, i) => s + i.savdo, 0);
-    const totalProfit = chartItems.reduce((s, i) => s + i.daromad, 0);
-    const totalCost = totalSales - totalProfit;
-    if (totalSales === 0) return [];
-    return [
-      { name: 'Daromad', value: totalProfit },
-      { name: 'Tannarx', value: totalCost },
-    ];
-  }, [chartItems]);
-
-  const monthlyNetProfit = useMemo(() => {
-    if (!stats) return 0;
-    return (stats.monthlyRevenue || 0) - (stats.monthlyExpenses || 0);
-  }, [stats]);
-
-  const yearOptions = useMemo(() => {
-    const years: number[] = [];
-    for (let y = now.getFullYear(); y >= now.getFullYear() - 4; y--) years.push(y);
-    return years;
-  }, []);
-
-  const chartSubtitle = useMemo(() => {
-    if (chartPeriod === 'year') return 'Yillar kesimida';
-    if (chartPeriod === 'month') return `${chartYear}-yil`;
-    return `${MONTH_NAMES[(chartMonth || 1) - 1]} ${chartYear}`;
-  }, [chartPeriod, chartYear, chartMonth]);
 
   const getPayrollUserName = (user: any): string => {
     if (!user) return '-';
@@ -406,9 +297,6 @@ export default function ReportsPage() {
             {department === 'ombor' && <TabsTrigger value="stock">Ombor</TabsTrigger>}
             {department === 'kadrlar' && (
               <TabsTrigger value="attendance">Davomat</TabsTrigger>
-            )}
-            {department === 'moliya' && (
-              <TabsTrigger value="revenue">Daromadlar</TabsTrigger>
             )}
             {department === 'moliya' && (
               <TabsTrigger value="cash-book">Kassa kitobi</TabsTrigger>
@@ -792,6 +680,65 @@ export default function ReportsPage() {
                             </TableCell>
                             <TableCell className="font-semibold text-green-400">
                               {formatCurrency(item.amount || 0)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </DataTableWrapper>
+              </motion.div>
+
+              {/* Stanoklar yuki (simplified: hours worked + defect qty/rate, no OEE) */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.27 }}
+              >
+                <h3 className="text-base font-semibold text-foreground mb-3">
+                  Stanoklar yuki
+                </h3>
+                <DataTableWrapper
+                  isEmpty={prodByMachine.length === 0}
+                  emptyTitle="Ma'lumot topilmadi"
+                  emptyDescription="Stanok bo'yicha ma'lumotlar mavjud emas"
+                >
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-b border-border/50 hover:bg-transparent">
+                          <TableHead className="min-w-[160px]">Stanok</TableHead>
+                          <TableHead className="min-w-[120px]">Ish soati</TableHead>
+                          <TableHead className="min-w-[120px]">Yaroqli</TableHead>
+                          <TableHead className="min-w-[100px]">Brak</TableHead>
+                          <TableHead className="min-w-[100px]">Brak %</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {prodByMachine.map((item, idx) => (
+                          <TableRow
+                            key={idx}
+                            className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                          >
+                            <TableCell className="font-medium text-foreground">
+                              {item.machineName}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {formatNumber(item.totalHoursWorked || 0)}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {formatNumber(item.totalQuantityGood || 0)}
+                            </TableCell>
+                            <TableCell className="text-amber-400">
+                              {formatNumber(item.totalQuantityDefective || 0)}
+                            </TableCell>
+                            <TableCell
+                              className={cn(
+                                'font-semibold',
+                                item.defectRate > 5 ? 'text-red-400' : 'text-muted-foreground',
+                              )}
+                            >
+                              {(item.defectRate || 0).toFixed(1)}%
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1203,356 +1150,6 @@ export default function ReportsPage() {
               </motion.div>
             </>
           ) : null}
-        </TabsContent>
-
-        {/* ── TAB: Daromadlar (Revenue) ──────────────────────────────────── */}
-        <TabsContent value="revenue" className="space-y-6">
-          {/* Joriy oy ko'rsatkichlari */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
-            className="grid grid-cols-1 sm:grid-cols-2 gap-4"
-          >
-            <StatCard
-              title="Oylik daromad"
-              value={formatCurrency(stats?.monthlyRevenue ?? 0)}
-              icon={TrendingUp}
-              iconColor="text-green-400"
-              iconBg="bg-green-500/20"
-              index={0}
-            />
-            <StatCard
-              title="Sof foyda (joriy oy)"
-              value={formatCurrency(monthlyNetProfit)}
-              icon={monthlyNetProfit >= 0 ? DollarSign : TrendingDown}
-              iconColor={monthlyNetProfit >= 0 ? 'text-green-400' : 'text-red-400'}
-              iconBg={monthlyNetProfit >= 0 ? 'bg-green-500/20' : 'bg-red-500/20'}
-              index={1}
-            />
-          </motion.div>
-
-          {/* Savdo va daromad grafiklari */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.15 }}
-            className="grid grid-cols-1 gap-5 xl:grid-cols-2"
-          >
-            <Card>
-              <CardHeader className="pb-2">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <LineChart className="h-5 w-5 text-indigo-400" />
-                    Savdo va daromad
-                  </CardTitle>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Select value={chartPeriod} onValueChange={(v) => setChartPeriod(v as 'year' | 'month' | 'day')}>
-                      <SelectTrigger className="w-[100px] h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="year">Yillar</SelectItem>
-                        <SelectItem value="month">Oylar</SelectItem>
-                        <SelectItem value="day">Kunlar</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {chartPeriod !== 'year' && (
-                      <Select value={String(chartYear)} onValueChange={(v) => setChartYear(Number(v))}>
-                        <SelectTrigger className="w-[80px] h-8 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {yearOptions.map((y) => (
-                            <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    {chartPeriod === 'day' && (
-                      <Select value={String(chartMonth)} onValueChange={(v) => setChartMonth(Number(v))}>
-                        <SelectTrigger className="w-[110px] h-8 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {MONTH_NAMES.map((name, idx) => (
-                            <SelectItem key={idx} value={String(idx + 1)}>{name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">{chartSubtitle}</p>
-              </CardHeader>
-              <CardContent>
-                {salesChartLoading ? (
-                  <div className="flex items-center justify-center h-[300px]">
-                    <LoadingSpinner size="md" />
-                  </div>
-                ) : chartItems.length === 0 ? (
-                  <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
-                    Ma'lumot topilmadi
-                  </div>
-                ) : (
-                  <div className="h-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartItems} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="gradSavdoRep" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="rgb(99, 102, 241)" stopOpacity={0.15} />
-                            <stop offset="95%" stopColor="rgb(99, 102, 241)" stopOpacity={0} />
-                          </linearGradient>
-                          <linearGradient id="gradDaromadRep" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="rgb(16, 185, 129)" stopOpacity={0.15} />
-                            <stop offset="95%" stopColor="rgb(16, 185, 129)" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
-                        <YAxis
-                          axisLine={false} tickLine={false}
-                          tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                          tickFormatter={(v) => v >= 1e9 ? `${(v/1e9).toFixed(1)}B` : v >= 1e6 ? `${(v/1e6).toFixed(0)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}K` : String(v)}
-                          width={50}
-                        />
-                        <Tooltip content={<ChartTooltip />} />
-                        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
-                        <Area
-                          type="monotone"
-                          dataKey="savdo"
-                          name="Savdo"
-                          stroke="rgb(99, 102, 241)"
-                          strokeWidth={2}
-                          fill="url(#gradSavdoRep)"
-                          stackId="1"
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="daromad"
-                          name="Daromad"
-                          stroke="rgb(16, 185, 129)"
-                          strokeWidth={2}
-                          fill="url(#gradDaromadRep)"
-                          stackId="2"
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <PieChartIcon className="h-5 w-5 text-purple-400" />
-                  Savdo tarkibi
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">{chartSubtitle}</p>
-              </CardHeader>
-              <CardContent>
-                {salesChartLoading ? (
-                  <div className="flex items-center justify-center h-[300px]">
-                    <LoadingSpinner size="md" />
-                  </div>
-                ) : pieData.length === 0 ? (
-                  <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
-                    Ma'lumot topilmadi
-                  </div>
-                ) : (
-                  <div className="h-[300px] flex items-center justify-center">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={70}
-                          outerRadius={110}
-                          paddingAngle={2}
-                          dataKey="value"
-                          strokeWidth={0}
-                        >
-                          {pieData.map((_entry, index) => (
-                            <Cell key={index} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          formatter={(value: number) => formatCurrency(value)}
-                          contentStyle={{
-                            borderRadius: '8px',
-                            border: '1px solid hsl(var(--border))',
-                            background: 'hsl(var(--card))',
-                            fontSize: '13px',
-                          }}
-                        />
-                        <Legend
-                          iconType="circle"
-                          iconSize={8}
-                          layout="vertical"
-                          align="right"
-                          verticalAlign="middle"
-                          wrapperStyle={{ fontSize: '13px', paddingLeft: '16px' }}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          {/* Davr bo'yicha daromad va xarajat (Foyda-zarar) */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.2 }}
-            className="space-y-4"
-          >
-            <h3 className="text-base font-semibold text-foreground">
-              Davr bo'yicha daromad va xarajat
-            </h3>
-            <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Boshlanish sana</Label>
-                <Input
-                  type="date"
-                  value={plDateFrom}
-                  onChange={(e) => setPlDateFrom(e.target.value)}
-                  className="h-9 rounded-xl text-xs"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Tugash sana</Label>
-                <Input
-                  type="date"
-                  value={plDateTo}
-                  onChange={(e) => setPlDateTo(e.target.value)}
-                  className="h-9 rounded-xl text-xs"
-                />
-              </div>
-            </div>
-
-            {plLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <LoadingSpinner size="lg" />
-              </div>
-            ) : plData ? (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <StatCard
-                    title="Jami daromad"
-                    value={formatCurrency(plData.totalRevenue || 0)}
-                    icon={TrendingUp}
-                    iconColor="text-green-400"
-                    iconBg="bg-green-500/20"
-                    index={0}
-                  />
-                  <StatCard
-                    title="Jami xarajat"
-                    value={formatCurrency(plData.totalExpenses || 0)}
-                    icon={TrendingDown}
-                    iconColor="text-red-400"
-                    iconBg="bg-red-500/20"
-                    index={1}
-                  />
-                  <StatCard
-                    title="Sof foyda"
-                    value={formatCurrency(plData.netProfit || 0)}
-                    icon={BarChart3}
-                    iconColor="text-indigo-400"
-                    iconBg="bg-indigo-500/20"
-                    index={2}
-                  />
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                    <Receipt className="h-4 w-4 text-green-400" />
-                    Mahsulot bo'yicha daromad
-                  </h4>
-                  <DataTableWrapper
-                    isEmpty={!plData.revenueByProduct || plData.revenueByProduct.length === 0}
-                    emptyTitle="Ma'lumot topilmadi"
-                    emptyDescription="Bu davr uchun mahsulot bo'yicha daromad mavjud emas"
-                  >
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="border-b border-border/50 hover:bg-transparent">
-                            <TableHead className="min-w-[200px]">Mahsulot</TableHead>
-                            <TableHead className="min-w-[120px]">Miqdori</TableHead>
-                            <TableHead className="min-w-[150px]">Jami summa</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {(plData.revenueByProduct || []).map((rp, idx) => (
-                            <TableRow
-                              key={idx}
-                              className="border-b border-border/30 hover:bg-accent/50 transition-colors"
-                            >
-                              <TableCell className="font-medium text-foreground">
-                                {rp.name || '---'}
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                {rp.quantity ?? '---'}
-                              </TableCell>
-                              <TableCell className="font-semibold text-green-400">
-                                {formatCurrency(rp.total || 0)}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </DataTableWrapper>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                    <PieChartIcon className="h-4 w-4 text-red-400" />
-                    Kategoriya bo'yicha xarajatlar
-                  </h4>
-                  <DataTableWrapper
-                    isEmpty={!plData.expensesByCategory || plData.expensesByCategory.length === 0}
-                    emptyTitle="Ma'lumot topilmadi"
-                    emptyDescription="Bu davr uchun kategoriya bo'yicha xarajat mavjud emas"
-                  >
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="border-b border-border/50 hover:bg-transparent">
-                            <TableHead className="min-w-[180px]">Kategoriya</TableHead>
-                            <TableHead className="min-w-[100px]">Soni</TableHead>
-                            <TableHead className="min-w-[150px]">Jami summa</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {(plData.expensesByCategory || []).map((ec, idx) => (
-                            <TableRow
-                              key={idx}
-                              className="border-b border-border/30 hover:bg-accent/50 transition-colors"
-                            >
-                              <TableCell>
-                                <Badge variant="secondary">{ec.category || '---'}</Badge>
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                {ec.count ?? '---'}
-                              </TableCell>
-                              <TableCell className="font-semibold text-red-400">
-                                {formatCurrency(ec.total || 0)}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </DataTableWrapper>
-                </div>
-              </>
-            ) : null}
-          </motion.div>
         </TabsContent>
 
         {/* ── TAB: Cash Book (Kassa kitobi) ─────────────────────────────── */}

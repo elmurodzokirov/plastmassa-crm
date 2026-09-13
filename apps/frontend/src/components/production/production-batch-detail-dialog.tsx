@@ -10,6 +10,7 @@ import { useProductionLogBatchDetail, useUpdateProductionLogBatch } from '@/hook
 import { toast } from '@/components/ui/use-toast';
 import { ProductSearchSelect } from '@/components/shared/product-search-select';
 import { UserSearchSelect } from '@/components/shared/user-search-select';
+import { useMachines } from '@/hooks/use-machines';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,12 +24,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
 
 const itemSchema = z.object({
   _id: z.string().optional(),
   product: z.string().min(1, 'Mahsulotni tanlang'),
   quantityProduced: z.coerce.number().min(0.001, "Miqdor 0 dan katta bo'lishi kerak"),
+  quantityDefective: z.coerce.number().min(0, "Brak miqdori 0 dan kam bo'lmasligi kerak").optional(),
   locked: z.boolean().optional(),
   productName: z.string().optional(),
 });
@@ -37,6 +46,9 @@ const editBatchSchema = z.object({
   worker: z.string().min(1, 'Ishchini tanlang'),
   date: z.string().min(1, 'Sanani tanlang'),
   notes: z.string().optional(),
+  machine: z.string().optional(),
+  shift: z.enum(['DAY', 'NIGHT']).optional(),
+  hoursWorked: z.coerce.number().min(0, "Ish soati 0 dan kam bo'lmasligi kerak").optional(),
   items: z.array(itemSchema).min(1, "Kamida bitta mahsulot qo'shing"),
 });
 
@@ -59,6 +71,7 @@ export function ProductionBatchDetailDialog({
 }: ProductionBatchDetailDialogProps) {
   const { data: detail, isLoading } = useProductionLogBatchDetail(open ? batchNumber : null);
   const updateBatchMutation = useUpdateProductionLogBatch();
+  const { data: machines } = useMachines();
 
   const {
     register,
@@ -70,7 +83,7 @@ export function ProductionBatchDetailDialog({
     formState: { errors },
   } = useForm<EditBatchFormData>({
     resolver: zodResolver(editBatchSchema),
-    defaultValues: { worker: '', date: '', notes: '', items: [] },
+    defaultValues: { worker: '', date: '', notes: '', machine: '', shift: undefined, hoursWorked: undefined, items: [] },
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
@@ -81,10 +94,14 @@ export function ProductionBatchDetailDialog({
       worker: typeof detail.worker === 'string' ? detail.worker : detail.worker?._id || '',
       date: detail.date ? format(new Date(detail.date), 'yyyy-MM-dd') : '',
       notes: detail.notes || '',
+      machine: typeof detail.machine === 'string' ? detail.machine : detail.machine?._id || '',
+      shift: detail.shift,
+      hoursWorked: detail.hoursWorked,
       items: detail.items.map((item: any) => ({
         _id: item._id,
         product: typeof item.product === 'string' ? item.product : item.product?._id,
         quantityProduced: item.quantityProduced,
+        quantityDefective: item.quantityDefective || 0,
         locked: item.locked,
         productName: item.productName,
       })),
@@ -101,10 +118,14 @@ export function ProductionBatchDetailDialog({
             worker: data.worker,
             date: data.date,
             notes: data.notes,
+            machine: data.machine || undefined,
+            shift: data.shift || undefined,
+            hoursWorked: data.hoursWorked,
             items: data.items.map((it) => ({
               _id: it._id,
               product: it.product,
               quantityProduced: it.quantityProduced,
+              quantityDefective: it.quantityDefective || 0,
             })),
           },
         });
@@ -132,7 +153,13 @@ export function ProductionBatchDetailDialog({
     const seen = new Set<string>();
     const result: typeof detail.editHistory = [];
     for (const h of detail.editHistory) {
-      const isShared = h.field === 'Ishchi' || h.field === 'Sana' || h.field === 'Izoh';
+      const isShared =
+        h.field === 'Ishchi' ||
+        h.field === 'Sana' ||
+        h.field === 'Izoh' ||
+        h.field === 'Stanok' ||
+        h.field === 'Smena' ||
+        h.field === 'Ish soati';
       const key = isShared
         ? `${h.field}|${h.changedAt}|${h.oldValue}|${h.newValue}|${h.userName}`
         : `${h.field}|${h.changedAt}|${h.oldValue}|${h.newValue}|${h.userName}|${h.productName}`;
@@ -185,6 +212,57 @@ export function ProductionBatchDetailDialog({
               </div>
             </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Stanok</Label>
+                <Select
+                  value={watch('machine') || 'none'}
+                  onValueChange={(value) => setValue('machine', value === 'none' ? '' : value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Stanokni tanlang" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanlanmagan</SelectItem>
+                    {machines?.map((m) => (
+                      <SelectItem key={m._id} value={m._id}>{m.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Smena</Label>
+                <Select
+                  value={watch('shift') || 'none'}
+                  onValueChange={(value) =>
+                    setValue('shift', value === 'none' ? undefined : (value as 'DAY' | 'NIGHT'))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Smenani tanlang" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanlanmagan</SelectItem>
+                    <SelectItem value="DAY">Kunduzgi</SelectItem>
+                    <SelectItem value="NIGHT">Tungi</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Ish soati</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="any"
+                  placeholder="0"
+                  {...register('hoursWorked')}
+                />
+                {errors.hoursWorked && (
+                  <p className="text-xs text-destructive">{errors.hoursWorked.message}</p>
+                )}
+              </div>
+            </div>
+
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label>Mahsulotlar</Label>
@@ -193,7 +271,7 @@ export function ProductionBatchDetailDialog({
                   variant="outline"
                   size="sm"
                   className="gap-1.5"
-                  onClick={() => append({ product: '', quantityProduced: 1 })}
+                  onClick={() => append({ product: '', quantityProduced: 1, quantityDefective: 0 })}
                 >
                   <Plus className="h-3.5 w-3.5" />
                   Qator qo'shish
@@ -222,7 +300,7 @@ export function ProductionBatchDetailDialog({
                         </button>
                       )
                     )}
-                    <div className="grid grid-cols-3 gap-3 pr-6">
+                    <div className="grid grid-cols-4 gap-3 pr-6">
                       <div className="col-span-2 space-y-2">
                         <Label className="text-xs">
                           Mahsulot <span className="text-destructive">*</span>
@@ -258,6 +336,18 @@ export function ProductionBatchDetailDialog({
                           <p className="text-xs text-destructive">{errors.items[index]?.quantityProduced?.message}</p>
                         )}
                       </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs">Brak miqdori</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="any"
+                          {...register(`items.${index}.quantityDefective`)}
+                        />
+                        {errors.items?.[index]?.quantityDefective && (
+                          <p className="text-xs text-destructive">{errors.items[index]?.quantityDefective?.message}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -288,7 +378,7 @@ export function ProductionBatchDetailDialog({
                       {format(new Date(h.changedAt), 'dd.MM.yyyy HH:mm')}
                       {': '}
                       <span className="text-foreground">{h.field}</span>
-                      {(h.field === 'Mahsulot' || h.field === 'Miqdor') && h.productName ? ` (${h.productName})` : ''}
+                      {(h.field === 'Mahsulot' || h.field === 'Miqdor' || h.field === 'Brak miqdori') && h.productName ? ` (${h.productName})` : ''}
                       {': '}
                       {h.oldValue} → {h.newValue}
                     </div>

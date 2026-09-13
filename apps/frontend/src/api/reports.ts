@@ -47,6 +47,13 @@ export interface ProductionReport {
     quantity: number;
     amount: number;
   }>;
+  byMachine: Array<{
+    machineName: string;
+    totalHoursWorked: number;
+    totalQuantityGood: number;
+    totalQuantityDefective: number;
+    defectRate: number;
+  }>;
   daily: Array<{
     date: string;
     quantity: number;

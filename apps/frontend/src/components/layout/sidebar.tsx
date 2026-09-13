@@ -22,6 +22,7 @@ import {
   Boxes,
   Calculator,
   Truck,
+  Settings2,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -78,6 +79,7 @@ const navigation: NavigationEntry[] = [
       { icon: Truck, name: 'Yetkazib beruvchilar', path: '/suppliers', permission: 'products:read' },
       { icon: Warehouse, name: 'Ombor harakatlari', path: '/stock/movements', permission: 'stock:read' },
       { icon: Factory, name: 'Ishlab chiqarish', path: '/production', permission: 'production:read' },
+      { icon: Settings2, name: 'Stanoklar', path: '/machines', permission: 'production:read' },
     ],
   },
 

@@ -8,6 +8,7 @@ const SUBJECT_LABELS: Record<string, string> = {
   products: 'Mahsulotlar',
   materials: 'Homashyolar',
   orders: 'Buyurtmalar',
+  returns: 'Qaytarishlar',
   stock: 'Ombor',
   production: 'Ishlab chiqarish',
   attendance: 'Davomat',
@@ -34,7 +35,7 @@ interface SubjectGroup {
 const SUBJECT_GROUPS: SubjectGroup[] = [
   {
     label: 'Asosiy',
-    subjects: ['users', 'customers', 'orders'],
+    subjects: ['users', 'customers', 'orders', 'returns'],
   },
   {
     label: 'Ombor va Ishlab chiqarish',
@@ -57,6 +58,7 @@ const SUBJECT_ACTIONS: Record<string, string[]> = {
   products: ['create', 'read', 'update', 'delete'],
   materials: ['create', 'read', 'update', 'delete'],
   orders: ['create', 'read', 'update', 'delete'],
+  returns: ['create', 'read', 'update'],
   stock: ['create', 'read', 'update'],
   production: ['create', 'read', 'update'],
   attendance: ['create', 'read', 'update'],

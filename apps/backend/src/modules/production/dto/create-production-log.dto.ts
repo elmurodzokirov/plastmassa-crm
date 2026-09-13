@@ -64,4 +64,22 @@ export class CreateProductionLogDto {
   @IsOptional()
   @IsString()
   batchNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  machine?: string;
+
+  @IsOptional()
+  @IsEnum(['DAY', 'NIGHT'])
+  shift?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  hoursWorked?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  quantityDefective?: number;
 }
