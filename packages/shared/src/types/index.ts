@@ -659,10 +659,12 @@ export interface ReturnItem {
 
 export interface Return {
   _id: string;
-  order: string | Order;
+  order?: string | Order;
+  customer: string | Customer;
   items: ReturnItem[];
   reason: string;
   totalAmount: number;
+  refundAmount: number;
   status: ReturnStatus;
   approvedBy?: string | User;
   approvedAt?: string;
