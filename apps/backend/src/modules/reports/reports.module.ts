@@ -13,6 +13,7 @@ import {
   SupplierPaymentSchema,
 } from '../suppliers/schemas/supplier-payment.schema';
 import { MaterialLot, MaterialLotSchema } from '../material-lots/schemas/material-lot.schema';
+import { StockMovement, StockMovementSchema } from '../stock/schemas/stock-movement.schema';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { MaterialLot, MaterialLotSchema } from '../material-lots/schemas/materia
       { name: Supplier.name, schema: SupplierSchema },
       { name: SupplierPayment.name, schema: SupplierPaymentSchema },
       { name: MaterialLot.name, schema: MaterialLotSchema },
+      { name: StockMovement.name, schema: StockMovementSchema },
     ]),
   ],
   controllers: [ReportsController],

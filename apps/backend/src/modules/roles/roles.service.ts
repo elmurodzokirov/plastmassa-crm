@@ -59,8 +59,14 @@ export class RolesService {
   async update(id: string, dto: UpdateRoleDto): Promise<RoleDocument> {
     const role = await this.findById(id);
 
-    if (role.isSystem) {
-      throw new BadRequestException('System roles cannot be modified');
+    // System roles (currently only "Direktor") keep their name/description fixed,
+    // but their permissions may still be adjusted — matching the Roles page, which
+    // locks those two fields for a system role while leaving the permission
+    // checkboxes editable.
+    if (role.isSystem && (dto.name !== undefined || dto.description !== undefined)) {
+      throw new BadRequestException(
+        "Tizim rolining nomi yoki tavsifini o'zgartirib bo'lmaydi",
+      );
     }
 
     if (dto.permissions) {

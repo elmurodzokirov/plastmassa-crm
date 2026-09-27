@@ -9,6 +9,14 @@ export function useReturns(params?: ReturnQuery, enabled: boolean = true) {
   });
 }
 
+export function useReturn(id: string) {
+  return useQuery({
+    queryKey: ['returns', id],
+    queryFn: () => returnsApi.getById(id),
+    enabled: !!id,
+  });
+}
+
 export function useApproveReturn() {
   const queryClient = useQueryClient();
 

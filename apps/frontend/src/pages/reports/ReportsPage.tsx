@@ -31,8 +31,14 @@ import {
   useStockReport,
   useAttendanceReport,
   useSupplierReconciliation,
+  useProductReconciliation,
 } from '@/hooks/use-reports';
 import { useSuppliers } from '@/hooks/use-suppliers';
+import { useProducts } from '@/hooks/use-products';
+import { OrderPreviewDialog } from '@/components/orders/order-preview-dialog';
+import { ReturnPreviewDialog } from '@/components/returns/return-preview-dialog';
+import { ProductionLogPreviewDialog } from '@/components/production/production-log-preview-dialog';
+import type { ProductReconciliationEntry } from '@/api/reports';
 import { useTransactions, useExpenses } from '@/hooks/use-finance';
 import { usePayrolls } from '@/hooks/use-payroll';
 
@@ -130,6 +136,21 @@ export default function ReportsPage() {
   const [reconDateFrom, setReconDateFrom] = useState('');
   const [reconDateTo, setReconDateTo] = useState('');
 
+  // ── Product reconciliation (akt-sverka) tab state ─────────────────
+  const [prodReconProduct, setProdReconProduct] = useState('');
+  const [prodReconDateFrom, setProdReconDateFrom] = useState('');
+  const [prodReconDateTo, setProdReconDateTo] = useState('');
+  const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
+  const [previewReturnId, setPreviewReturnId] = useState<string | null>(null);
+  const [previewLogId, setPreviewLogId] = useState<string | null>(null);
+
+  const handleEntryClick = (entry: ProductReconciliationEntry) => {
+    if (!entry.reference || !entry.referenceModel) return;
+    if (entry.referenceModel === 'Order') setPreviewOrderId(entry.reference);
+    else if (entry.referenceModel === 'Return') setPreviewReturnId(entry.reference);
+    else if (entry.referenceModel === 'ProductionLog') setPreviewLogId(entry.reference);
+  };
+
   // ── Cash book (Kassa kitobi) tab state ────────────────────────────
   const [cbDateFrom, setCbDateFrom] = useState(defaultRange.dateFrom);
   const [cbDateTo, setCbDateTo] = useState(defaultRange.dateTo);
@@ -172,6 +193,18 @@ export default function ReportsPage() {
     [reconSupplier, reconDateFrom, reconDateTo],
   );
   const { data: reconData, isLoading: reconLoading } = useSupplierReconciliation(reconParams);
+
+  const { data: productsListData } = useProducts({ limit: 200, isActive: true });
+  const productsList = productsListData?.items || [];
+  const prodReconParams = useMemo(
+    () => ({
+      product: prodReconProduct,
+      ...(prodReconDateFrom && { dateFrom: prodReconDateFrom }),
+      ...(prodReconDateTo && { dateTo: prodReconDateTo }),
+    }),
+    [prodReconProduct, prodReconDateFrom, prodReconDateTo],
+  );
+  const { data: prodReconData, isLoading: prodReconLoading } = useProductReconciliation(prodReconParams);
 
   const cbParams = useMemo(
     () => ({ dateFrom: cbDateFrom, dateTo: cbDateTo }),
@@ -295,6 +328,9 @@ export default function ReportsPage() {
               <TabsTrigger value="production">Ishlab chiqarish</TabsTrigger>
             )}
             {department === 'ombor' && <TabsTrigger value="stock">Ombor</TabsTrigger>}
+            {department === 'ombor' && (
+              <TabsTrigger value="product-recon">Mahsulot kirim-chiqimi</TabsTrigger>
+            )}
             {department === 'kadrlar' && (
               <TabsTrigger value="attendance">Davomat</TabsTrigger>
             )}
@@ -854,6 +890,166 @@ export default function ReportsPage() {
 
             </>
           )}
+        </TabsContent>
+
+        {/* ── TAB: Product Reconciliation (Mahsulot akt-sverka) ─────────── */}
+        <TabsContent value="product-recon" className="space-y-6">
+          {/* Filters */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            className="flex flex-col sm:flex-row items-start sm:items-end gap-3"
+          >
+            <div className="space-y-1.5 min-w-[220px]">
+              <Label className="text-xs text-muted-foreground">Mahsulot</Label>
+              <Select value={prodReconProduct} onValueChange={setProdReconProduct}>
+                <SelectTrigger className="h-9 rounded-xl text-xs">
+                  <SelectValue placeholder="Mahsulotni tanlang" />
+                </SelectTrigger>
+                <SelectContent>
+                  {productsList.map((p: any) => (
+                    <SelectItem key={p._id} value={p._id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Boshlanish sana</Label>
+              <Input
+                type="date"
+                value={prodReconDateFrom}
+                onChange={(e) => setProdReconDateFrom(e.target.value)}
+                className="h-9 rounded-xl text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Tugash sana</Label>
+              <Input
+                type="date"
+                value={prodReconDateTo}
+                onChange={(e) => setProdReconDateTo(e.target.value)}
+                className="h-9 rounded-xl text-xs"
+              />
+            </div>
+          </motion.div>
+
+          {!prodReconProduct ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-4">
+                <Package className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-medium text-foreground">Mahsulotni tanlang</h3>
+              <p className="mt-1 text-sm text-muted-foreground max-w-sm">
+                Akt-sverka hisobotini ko'rish uchun yuqoridan mahsulotni tanlang
+              </p>
+            </div>
+          ) : prodReconLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <LoadingSpinner size="lg" />
+            </div>
+          ) : prodReconData ? (
+            <>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <StatCard
+                  title="Davr boshidagi qoldiq"
+                  value={`${formatNumber(prodReconData.openingBalance || 0)} ${prodReconData.unit}`}
+                  icon={ArrowDownCircle}
+                  iconColor="text-amber-400"
+                  iconBg="bg-amber-500/20"
+                  index={0}
+                />
+                <StatCard
+                  title="Davr oxiridagi qoldiq"
+                  value={`${formatNumber(prodReconData.closingBalance || 0)} ${prodReconData.unit}`}
+                  icon={ArrowUpCircle}
+                  iconColor="text-red-400"
+                  iconBg="bg-red-500/20"
+                  index={1}
+                />
+                <StatCard
+                  title="Joriy zaxira"
+                  value={`${formatNumber(prodReconData.currentStock || 0)} ${prodReconData.unit}`}
+                  icon={Package}
+                  iconColor="text-indigo-400"
+                  iconBg="bg-indigo-500/20"
+                  index={2}
+                />
+              </div>
+
+              {/* Ledger Table */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+              >
+                <h3 className="text-base font-semibold text-foreground mb-3">
+                  {prodReconData.product?.name} — kirim-chiqim tarixi
+                </h3>
+                <DataTableWrapper
+                  isEmpty={prodReconData.entries.length === 0}
+                  emptyTitle="Ma'lumot topilmadi"
+                  emptyDescription="Bu davr uchun harakatlar mavjud emas"
+                >
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-b border-border/50 hover:bg-transparent">
+                          <TableHead className="min-w-[140px]">Sana</TableHead>
+                          <TableHead className="min-w-[220px]">Tavsif</TableHead>
+                          <TableHead className="min-w-[130px]">Kirim (+)</TableHead>
+                          <TableHead className="min-w-[130px]">Chiqim (-)</TableHead>
+                          <TableHead className="min-w-[140px]">Qoldiq</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        <TableRow className="border-b border-border/30 bg-muted/20">
+                          <TableCell colSpan={4} className="font-medium text-muted-foreground">
+                            Davr boshidagi qoldiq
+                          </TableCell>
+                          <TableCell className="font-semibold text-foreground">
+                            {formatNumber(prodReconData.openingBalance || 0)} {prodReconData.unit}
+                          </TableCell>
+                        </TableRow>
+                        {prodReconData.entries.map((entry, idx) => {
+                          const isClickable = !!entry.reference && !!entry.referenceModel;
+                          return (
+                            <TableRow
+                              key={idx}
+                              onClick={() => isClickable && handleEntryClick(entry)}
+                              className={cn(
+                                'border-b border-border/30 hover:bg-accent/50 transition-colors',
+                                isClickable && 'cursor-pointer',
+                              )}
+                            >
+                              <TableCell className="text-muted-foreground">
+                                {entry.date ? format(new Date(entry.date), 'dd.MM.yyyy HH:mm') : '---'}
+                              </TableCell>
+                              <TableCell className="font-medium text-foreground">
+                                {entry.description}
+                              </TableCell>
+                              <TableCell className="font-semibold text-green-400">
+                                {entry.quantityIn > 0 ? formatNumber(entry.quantityIn) : '-'}
+                              </TableCell>
+                              <TableCell className="font-semibold text-red-400">
+                                {entry.quantityOut > 0 ? formatNumber(entry.quantityOut) : '-'}
+                              </TableCell>
+                              <TableCell className="font-semibold text-foreground">
+                                {formatNumber(entry.balance)} {prodReconData.unit}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </DataTableWrapper>
+              </motion.div>
+            </>
+          ) : null}
         </TabsContent>
 
         {/* ── TAB 4: Attendance ─────────────────────────────────────────── */}
@@ -1521,6 +1717,24 @@ export default function ReportsPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Reconciliation entry preview dialogs */}
+      <OrderPreviewDialog
+        orderId={previewOrderId}
+        onOpenChange={(open) => !open && setPreviewOrderId(null)}
+      />
+      <ReturnPreviewDialog
+        returnId={previewReturnId}
+        onOpenChange={(open) => !open && setPreviewReturnId(null)}
+        onViewOrder={(orderId) => {
+          setPreviewReturnId(null);
+          setPreviewOrderId(orderId);
+        }}
+      />
+      <ProductionLogPreviewDialog
+        logId={previewLogId}
+        onOpenChange={(open) => !open && setPreviewLogId(null)}
+      />
     </div>
   );
 }

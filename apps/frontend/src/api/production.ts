@@ -3,6 +3,7 @@ import type { PaginatedResponse } from '@plastmassa/shared';
 
 export interface ProductionLogData {
   _id: string;
+  batchNumber?: string;
   product: any;
   productName: string;
   unit: any;

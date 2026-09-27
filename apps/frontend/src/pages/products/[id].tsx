@@ -17,9 +17,8 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertTriangle,
-  ArrowUpRight,
-  ArrowDownRight,
-  Minus,
+  ArrowDownCircle,
+  ArrowUpCircle,
   ClipboardList,
   X,
   Percent,
@@ -34,6 +33,11 @@ import {
   useProductCostHistory,
   useCreateProductLot,
 } from '@/hooks/use-product-lots';
+import { useProductReconciliation } from '@/hooks/use-reports';
+import { OrderPreviewDialog } from '@/components/orders/order-preview-dialog';
+import { ReturnPreviewDialog } from '@/components/returns/return-preview-dialog';
+import { ProductionLogPreviewDialog } from '@/components/production/production-log-preview-dialog';
+import type { ProductReconciliationEntry } from '@/api/reports';
 import { ProductLotQuery } from '@/api/product-lots';
 import { useMaterials } from '@/hooks/use-materials';
 import { useSuppliers } from '@/hooks/use-suppliers';
@@ -118,6 +122,11 @@ export default function ProductDetailPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [reconDateFrom, setReconDateFrom] = useState('');
+  const [reconDateTo, setReconDateTo] = useState('');
+  const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
+  const [previewReturnId, setPreviewReturnId] = useState<string | null>(null);
+  const [previewLogId, setPreviewLogId] = useState<string | null>(null);
   const limit = 10;
 
   const { data: product, isLoading: isLoadingProduct, isError } = useProduct(id || '');
@@ -136,6 +145,16 @@ export default function ProductDetailPage() {
   const { data: lotsData, isLoading: isLoadingLots } = useProductLotsByProduct(id || '', lotsParams);
   const { data: costHistory } = useProductCostHistory(id || '');
   const createLotMutation = useCreateProductLot();
+
+  const reconParams = useMemo(
+    () => ({
+      product: id || '',
+      ...(reconDateFrom && { dateFrom: reconDateFrom }),
+      ...(reconDateTo && { dateTo: reconDateTo }),
+    }),
+    [id, reconDateFrom, reconDateTo],
+  );
+  const { data: reconData, isLoading: isLoadingRecon } = useProductReconciliation(reconParams);
 
   const [recipeDialogOpen, setRecipeDialogOpen] = useState(false);
   const { data: materialsData } = useMaterials({ limit: 200, isActive: true });
@@ -168,11 +187,6 @@ export default function ProductDetailPage() {
   const totalLotsSum = useMemo(() => {
     if (!costHistory || costHistory.length === 0) return 0;
     return costHistory.reduce((sum, lot) => sum + lot.totalCost, 0);
-  }, [costHistory]);
-
-  const recentCosts = useMemo(() => {
-    if (!costHistory) return [];
-    return costHistory.slice(0, 10);
   }, [costHistory]);
 
   const {
@@ -227,6 +241,13 @@ export default function ProductDetailPage() {
       reset((prev) => ({ ...prev, unit: baseUnitId }));
     }
   }, [product, baseUnitId, reset]);
+
+  const handleEntryClick = useCallback((entry: ProductReconciliationEntry) => {
+    if (!entry.reference || !entry.referenceModel) return;
+    if (entry.referenceModel === 'Order') setPreviewOrderId(entry.reference);
+    else if (entry.referenceModel === 'Return') setPreviewReturnId(entry.reference);
+    else if (entry.referenceModel === 'ProductionLog') setPreviewLogId(entry.reference);
+  }, []);
 
   const openDialog = useCallback(() => {
     reset({
@@ -456,66 +477,141 @@ export default function ProductDetailPage() {
         />
       </div>
 
-      {/* Cost Trend Section */}
-      {recentCosts.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-          className="bg-card/60 backdrop-blur-xl border border-border/50 rounded-2xl p-6"
-        >
-          <div className="flex items-center gap-2 mb-4">
-            <TrendingUp className="h-5 w-5 text-indigo-400" />
-            <h2 className="text-lg font-semibold text-foreground">Narx tendensiyasi</h2>
-            <span className="text-sm text-muted-foreground">(oxirgi 10 ta kirim)</span>
+      {/* Stock Reconciliation (Akt-sverka: kirim-chiqim tarixi) Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+        className="bg-card/60 backdrop-blur-xl border border-border/50 rounded-2xl p-6 space-y-4"
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <ClipboardList className="h-5 w-5 text-indigo-400" />
+            <h2 className="text-lg font-semibold text-foreground">
+              Kirim-chiqim tarixi (Akt-sverka)
+            </h2>
           </div>
-          <div className="space-y-2">
-            {recentCosts.map((lot, index) => {
-              const prevLot = recentCosts[index + 1];
-              let trend: 'up' | 'down' | 'same' = 'same';
-              if (prevLot) {
-                if (lot.unitCost > prevLot.unitCost) trend = 'up';
-                else if (lot.unitCost < prevLot.unitCost) trend = 'down';
-              }
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                type="date"
+                value={reconDateFrom}
+                onChange={(e) => setReconDateFrom(e.target.value)}
+                className="pl-9 w-40 h-9"
+              />
+            </div>
+            <span className="text-muted-foreground">-</span>
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                type="date"
+                value={reconDateTo}
+                onChange={(e) => setReconDateTo(e.target.value)}
+                className="pl-9 w-40 h-9"
+              />
+            </div>
+          </div>
+        </div>
 
-              return (
-                <div
-                  key={lot._id}
-                  className="flex items-center gap-4 py-2.5 px-4 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
-                >
-                  <span className="text-sm font-mono text-muted-foreground w-28 shrink-0">
-                    {lot.lotNumber}
-                  </span>
-                  <span className="text-sm text-muted-foreground w-28 shrink-0">
-                    {format(new Date(lot.createdAt), 'dd.MM.yyyy')}
-                  </span>
-                  <span className="text-sm text-foreground w-28 shrink-0">
-                    {formatNumber(lot.quantity)} {unitSymbol}
-                  </span>
-                  <div className="flex items-center gap-1.5 w-36 shrink-0">
-                    {trend === 'up' && <ArrowUpRight className="h-4 w-4 text-red-400" />}
-                    {trend === 'down' && <ArrowDownRight className="h-4 w-4 text-green-400" />}
-                    {trend === 'same' && <Minus className="h-4 w-4 text-muted-foreground" />}
-                    <span
-                      className={cn(
-                        'text-sm font-medium',
-                        trend === 'up' && 'text-red-400',
-                        trend === 'down' && 'text-green-400',
-                        trend === 'same' && 'text-muted-foreground',
-                      )}
-                    >
-                      {formatCurrency(lot.unitCost)}
-                    </span>
-                  </div>
-                  <span className="text-sm text-foreground ml-auto">
-                    {formatCurrency(lot.totalCost)}
-                  </span>
-                </div>
-              );
-            })}
+        {isLoadingRecon ? (
+          <div className="flex items-center justify-center py-10">
+            <LoadingSpinner />
           </div>
-        </motion.div>
-      )}
+        ) : reconData ? (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-xl bg-muted/30 p-3 flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/20 shrink-0">
+                  <ArrowDownCircle className="h-4 w-4 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Davr boshidagi qoldiq</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {formatNumber(reconData.openingBalance)} {unitSymbol}
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-xl bg-muted/30 p-3 flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-500/20 shrink-0">
+                  <ArrowUpCircle className="h-4 w-4 text-red-400" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Davr oxiridagi qoldiq</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {formatNumber(reconData.closingBalance)} {unitSymbol}
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-xl bg-indigo-500/10 p-3 border border-indigo-500/20 flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-500/20 shrink-0">
+                  <Package className="h-4 w-4 text-indigo-400" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Joriy zaxira</p>
+                  <p className="text-sm font-semibold text-indigo-300">
+                    {formatNumber(reconData.currentStock)} {unitSymbol}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <DataTableWrapper
+              isEmpty={reconData.entries.length === 0}
+              emptyTitle="Harakatlar topilmadi"
+              emptyDescription="Bu davr uchun ombor harakatlari mavjud emas"
+            >
+              <div className="max-h-96 overflow-y-auto rounded-xl border border-border/60">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>Sana</TableHead>
+                      <TableHead>Tavsif</TableHead>
+                      <TableHead>Kirim (+)</TableHead>
+                      <TableHead>Chiqim (-)</TableHead>
+                      <TableHead>Qoldiq</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow className="bg-muted/20">
+                      <TableCell colSpan={4} className="font-medium text-muted-foreground">
+                        Davr boshidagi qoldiq
+                      </TableCell>
+                      <TableCell className="font-semibold text-foreground">
+                        {formatNumber(reconData.openingBalance)} {unitSymbol}
+                      </TableCell>
+                    </TableRow>
+                    {reconData.entries.map((entry, idx) => {
+                      const isClickable = !!entry.reference && !!entry.referenceModel;
+                      return (
+                        <TableRow
+                          key={idx}
+                          onClick={() => isClickable && handleEntryClick(entry)}
+                          className={isClickable ? 'cursor-pointer hover:bg-muted/40' : ''}
+                        >
+                          <TableCell className="text-muted-foreground whitespace-nowrap">
+                            {format(new Date(entry.date), 'dd.MM.yyyy HH:mm')}
+                          </TableCell>
+                          <TableCell className="text-foreground">{entry.description}</TableCell>
+                          <TableCell className="font-medium text-green-400">
+                            {entry.quantityIn > 0 ? formatNumber(entry.quantityIn) : '-'}
+                          </TableCell>
+                          <TableCell className="font-medium text-red-400">
+                            {entry.quantityOut > 0 ? formatNumber(entry.quantityOut) : '-'}
+                          </TableCell>
+                          <TableCell className="font-semibold text-foreground">
+                            {formatNumber(entry.balance)} {unitSymbol}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </DataTableWrapper>
+          </>
+        ) : null}
+      </motion.div>
 
       {/* Recipe (BOM) & Cost Calculation Section */}
       <motion.div
@@ -998,6 +1094,24 @@ export default function ProductDetailPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Reconciliation entry preview dialogs */}
+      <OrderPreviewDialog
+        orderId={previewOrderId}
+        onOpenChange={(open) => !open && setPreviewOrderId(null)}
+      />
+      <ReturnPreviewDialog
+        returnId={previewReturnId}
+        onOpenChange={(open) => !open && setPreviewReturnId(null)}
+        onViewOrder={(orderId) => {
+          setPreviewReturnId(null);
+          setPreviewOrderId(orderId);
+        }}
+      />
+      <ProductionLogPreviewDialog
+        logId={previewLogId}
+        onOpenChange={(open) => !open && setPreviewLogId(null)}
+      />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { QuerySalesReportDto } from './dto/query-sales-report.dto';
 import { QueryProductionReportDto } from './dto/query-production-report.dto';
 import { QueryAttendanceReportDto } from './dto/query-attendance-report.dto';
 import { QuerySupplierReconciliationDto } from './dto/query-supplier-reconciliation.dto';
+import { QueryProductReconciliationDto } from './dto/query-product-reconciliation.dto';
 
 @Controller('reports')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -48,6 +49,15 @@ export class ReportsController {
   async getSupplierReconciliation(@Query() query: QuerySupplierReconciliationDto) {
     return this.reportsService.getSupplierReconciliation(
       query.supplier,
+      query.dateFrom,
+      query.dateTo,
+    );
+  }
+
+  @Get('product-reconciliation')
+  async getProductReconciliation(@Query() query: QueryProductReconciliationDto) {
+    return this.reportsService.getProductReconciliation(
+      query.product,
       query.dateFrom,
       query.dateTo,
     );

@@ -12,6 +12,10 @@ import {
   SupplierPaymentDocument,
 } from '../suppliers/schemas/supplier-payment.schema';
 import { MaterialLot, MaterialLotDocument } from '../material-lots/schemas/material-lot.schema';
+import {
+  StockMovement,
+  StockMovementDocument,
+} from '../stock/schemas/stock-movement.schema';
 import { NotFoundException } from '@nestjs/common';
 
 @Injectable()
@@ -33,6 +37,8 @@ export class ReportsService {
     private readonly supplierPaymentModel: Model<SupplierPaymentDocument>,
     @InjectModel(MaterialLot.name)
     private readonly materialLotModel: Model<MaterialLotDocument>,
+    @InjectModel(StockMovement.name)
+    private readonly stockMovementModel: Model<StockMovementDocument>,
   ) {}
 
   async getSalesReport(dateFrom?: string, dateTo?: string, groupBy: 'day' | 'week' | 'month' = 'month') {
@@ -504,6 +510,98 @@ export class ReportsService {
       openingBalance,
       closingBalance: runningBalance,
       currentDebt: supplier.currentDebt,
+      entries,
+      period: { from: dateFrom, to: dateTo },
+    };
+  }
+
+  async getProductReconciliation(
+    productId: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ) {
+    const product = await this.productModel
+      .findById(productId)
+      .populate('baseUnit')
+      .exec();
+    if (!product) {
+      throw new NotFoundException(`Product with ID "${productId}" not found`);
+    }
+
+    const from = dateFrom ? new Date(dateFrom) : null;
+    const to = dateTo ? new Date(dateTo) : null;
+    if (to) to.setHours(23, 59, 59, 999);
+
+    // Pull the full history (unfiltered) so the running balance stays accurate
+    // regardless of the requested window — mirrors getSupplierReconciliation.
+    const movements = await this.stockMovementModel
+      .find({ product: productId })
+      .sort({ createdAt: 1 })
+      .exec();
+
+    type LedgerEntry = {
+      date: Date;
+      type: string;
+      description: string;
+      reference?: string;
+      referenceModel?: string;
+      quantityIn: number;
+      quantityOut: number;
+      balance: number;
+    };
+
+    let runningBalance = 0;
+    let openingBalance = 0;
+    const entries: LedgerEntry[] = [];
+
+    for (const movement of movements as any[]) {
+      if (to && movement.createdAt > to) {
+        // Movements are sorted ascending — nothing after this is relevant.
+        break;
+      }
+
+      let delta = 0;
+      if (movement.type === 'IN') {
+        delta = movement.quantity;
+      } else if (movement.type === 'OUT') {
+        delta = -movement.quantity;
+      } else if (movement.type === 'ADJUSTMENT') {
+        // For ADJUSTMENT movements `quantity` is the target stock level at
+        // the moment it was recorded, not a delta — derive the actual change
+        // from the balance we've computed up to this point.
+        delta = movement.quantity - runningBalance;
+      }
+
+      if (from && movement.createdAt < from) {
+        runningBalance += delta;
+        openingBalance += delta;
+        continue;
+      }
+
+      runningBalance += delta;
+      entries.push({
+        date: movement.createdAt,
+        type: movement.type,
+        description: movement.reason,
+        reference: movement.reference,
+        referenceModel: movement.referenceModel,
+        quantityIn: delta > 0 ? delta : 0,
+        quantityOut: delta < 0 ? -delta : 0,
+        balance: runningBalance,
+      });
+    }
+
+    const unitSymbol =
+      product.baseUnit && typeof product.baseUnit === 'object'
+        ? (product.baseUnit as any).symbol
+        : '';
+
+    return {
+      product: { _id: product._id, name: product.name },
+      unit: unitSymbol,
+      openingBalance,
+      closingBalance: runningBalance,
+      currentStock: product.currentStock,
       entries,
       period: { from: dateFrom, to: dateTo },
     };

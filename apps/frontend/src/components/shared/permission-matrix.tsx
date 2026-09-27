@@ -6,7 +6,6 @@ const SUBJECT_LABELS: Record<string, string> = {
   users: 'Foydalanuvchilar',
   customers: 'Mijozlar',
   products: 'Mahsulotlar',
-  materials: 'Homashyolar',
   orders: 'Buyurtmalar',
   returns: 'Qaytarishlar',
   stock: 'Ombor',
@@ -39,7 +38,7 @@ const SUBJECT_GROUPS: SubjectGroup[] = [
   },
   {
     label: 'Ombor va Ishlab chiqarish',
-    subjects: ['materials', 'products', 'stock', 'production'],
+    subjects: ['products', 'stock', 'production'],
   },
   {
     label: 'Moliya va HR',
@@ -56,7 +55,6 @@ const SUBJECT_ACTIONS: Record<string, string[]> = {
   users: ['create', 'read', 'update', 'delete'],
   customers: ['create', 'read', 'update', 'delete'],
   products: ['create', 'read', 'update', 'delete'],
-  materials: ['create', 'read', 'update', 'delete'],
   orders: ['create', 'read', 'update', 'delete'],
   returns: ['create', 'read', 'update'],
   stock: ['create', 'read', 'update'],

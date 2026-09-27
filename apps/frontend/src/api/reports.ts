@@ -137,6 +137,36 @@ export interface SupplierReconciliationReport {
   period: { from?: string; to?: string };
 }
 
+export interface ProductReconciliationParams {
+  product: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface ProductReconciliationEntry {
+  date: string;
+  type: 'IN' | 'OUT' | 'ADJUSTMENT';
+  description: string;
+  reference?: string;
+  referenceModel?: 'Order' | 'ProductionLog' | 'Return';
+  quantityIn: number;
+  quantityOut: number;
+  balance: number;
+}
+
+export interface ProductReconciliationReport {
+  product: {
+    _id: string;
+    name: string;
+  };
+  unit: string;
+  openingBalance: number;
+  closingBalance: number;
+  currentStock: number;
+  entries: ProductReconciliationEntry[];
+  period: { from?: string; to?: string };
+}
+
 // ── API Client ───────────────────────────────────────────────────────
 
 export const reportsApi = {
@@ -155,5 +185,10 @@ export const reportsApi = {
   getSupplierReconciliation: (params: SupplierReconciliationParams) =>
     client
       .get<SupplierReconciliationReport>('/reports/supplier-reconciliation', { params })
+      .then((r) => r.data),
+
+  getProductReconciliation: (params: ProductReconciliationParams) =>
+    client
+      .get<ProductReconciliationReport>('/reports/product-reconciliation', { params })
       .then((r) => r.data),
 };
