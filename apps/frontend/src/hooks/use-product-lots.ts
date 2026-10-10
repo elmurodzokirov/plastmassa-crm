@@ -5,6 +5,7 @@ import {
   ProductLotBatchQuery,
   UpdateProductLotBatchInput,
 } from '@/api/product-lots';
+import { invalidateFinanceQueries } from './use-finance';
 
 export function useProductLots(params?: ProductLotQuery) {
   return useQuery({
@@ -28,6 +29,11 @@ export function useCreateProductLot() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product-lots'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      // A lot with a supplier + immediate paidAmount creates a
+      // SupplierPayment behind the scenes — reflect it everywhere.
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['supplier-payments'] });
+      invalidateFinanceQueries(queryClient);
     },
   });
 }
@@ -40,6 +46,8 @@ export function useCreateProductLotBatch() {
       queryClient.invalidateQueries({ queryKey: ['product-lots'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['supplier-payments'] });
+      invalidateFinanceQueries(queryClient);
     },
   });
 }
@@ -85,6 +93,8 @@ export function useUpdateProductLotBatch() {
       queryClient.invalidateQueries({ queryKey: ['product-lots'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['supplier-payments'] });
+      invalidateFinanceQueries(queryClient);
     },
   });
 }

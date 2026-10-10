@@ -1,5 +1,7 @@
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import { returnsApi, ReturnQuery } from '@/api/returns';
+import { invalidateFinanceQueries } from './use-finance';
+import { invalidateDashboardQueries } from './use-dashboard';
 
 export function useReturns(params?: ReturnQuery, enabled: boolean = true) {
   return useQuery({
@@ -27,10 +29,9 @@ export function useApproveReturn() {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['finance'] });
-      queryClient.invalidateQueries({ queryKey: ['todayTransactions'] });
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      // Approving is the point the refund cash actually leaves the register.
+      invalidateDashboardQueries(queryClient);
+      invalidateFinanceQueries(queryClient);
     },
   });
 }
@@ -45,10 +46,6 @@ export function useCreateReturn() {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['finance'] });
-      queryClient.invalidateQueries({ queryKey: ['todayTransactions'] });
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
     },
   });
 }

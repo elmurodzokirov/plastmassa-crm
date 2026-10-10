@@ -27,7 +27,7 @@ import {
   Undo2,
 } from 'lucide-react';
 import type { Customer, User as UserType, Payment, PaymentMethodType, Return as ReturnEntity } from '@plastmassa/shared';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, getErrorMessage } from '@/lib/utils';
 import { useOrder, useUpdateOrderStatus, useDeliverOrder } from '@/hooks/use-orders';
 import { usePaymentsByOrder, useCreatePayment } from '@/hooks/use-payments';
 import { useReturns, useCreateReturn } from '@/hooks/use-returns';
@@ -183,11 +183,10 @@ export default function OrderDetailPage() {
       });
       setConfirmDialogOpen(false);
       setPendingStatus(null);
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Xatolik',
-        description:
-          error?.response?.data?.message || "Holatni o'zgartirishda xatolik yuz berdi",
+        description: getErrorMessage(error, "Holatni o'zgartirishda xatolik yuz berdi"),
         variant: 'destructive',
       });
     }
@@ -235,12 +234,10 @@ export default function OrderDetailPage() {
         });
         setPaymentDialogOpen(false);
         reset();
-      } catch (error: any) {
+      } catch (error) {
         toast({
           title: 'Xatolik',
-          description:
-            error?.response?.data?.message ||
-            "To'lovni qo'shishda xatolik yuz berdi",
+          description: getErrorMessage(error, "To'lovni qo'shishda xatolik yuz berdi"),
           variant: 'destructive',
         });
       }
@@ -265,10 +262,10 @@ export default function OrderDetailPage() {
       setDeliverDialogOpen(false);
       setDeliveredTo('');
       setDeliveryNotes('');
-    } catch {
+    } catch (error) {
       toast({
         title: 'Xatolik',
-        description: 'Topshirishda xatolik yuz berdi',
+        description: getErrorMessage(error, 'Topshirishda xatolik yuz berdi'),
         variant: 'destructive',
       });
     }
@@ -349,11 +346,10 @@ export default function OrderDetailPage() {
       setReturnDialogOpen(false);
       setReturnReason('');
       setReturnItems([]);
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Xatolik',
-        description:
-          error?.response?.data?.message || 'Qaytarish yaratishda xatolik yuz berdi',
+        description: getErrorMessage(error, 'Qaytarish yaratishda xatolik yuz berdi'),
         variant: 'destructive',
       });
     }

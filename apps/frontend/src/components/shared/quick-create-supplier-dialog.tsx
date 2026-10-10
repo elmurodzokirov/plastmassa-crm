@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { Supplier } from '@plastmassa/shared';
 import { useCreateSupplier } from '@/hooks/use-suppliers';
 import { toast } from '@/components/ui/use-toast';
+import { getErrorMessage } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,8 +70,8 @@ export function QuickCreateSupplierDialog({
         toast({ title: 'Muvaffaqiyatli', description: 'Yangi yetkazib beruvchi yaratildi' });
         onCreated(supplier);
         onOpenChange(false);
-      } catch {
-        toast({ title: 'Xatolik', description: 'Yetkazib beruvchi yaratishda xatolik yuz berdi', variant: 'destructive' });
+      } catch (error) {
+        toast({ title: 'Xatolik', description: getErrorMessage(error, 'Yetkazib beruvchi yaratishda xatolik yuz berdi'), variant: 'destructive' });
       }
     },
     [createMutation, onCreated, onOpenChange],

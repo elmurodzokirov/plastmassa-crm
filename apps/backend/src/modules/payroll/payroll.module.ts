@@ -7,6 +7,7 @@ import { Payroll, PayrollSchema } from './schemas/payroll.schema';
 import { ProductionLog, ProductionLogSchema } from '../production/schemas/production-log.schema';
 import { AttendanceModule } from '../attendance/attendance.module';
 import { UsersModule } from '../users/users.module';
+import { ExpensesModule } from '../expenses/expenses.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { UsersModule } from '../users/users.module';
     ]),
     AttendanceModule,
     UsersModule,
+    ExpensesModule,
   ],
   controllers: [PayrollController],
   providers: [PayrollService],

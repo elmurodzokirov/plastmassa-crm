@@ -1,5 +1,27 @@
-import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
+import { useQueryClient, useQuery, useMutation, QueryClient } from '@tanstack/react-query';
 import { financeApi, ExpenseQuery, ExpenseData, TransactionsLedgerParams } from '@/api/finance';
+
+/**
+ * Every mutation that moves money (order payments, supplier payments,
+ * expenses, material/product lot purchases, returns, payroll, ...) should
+ * call this so the Moliya pages (Kassa, Pul oqimi, Hisobotlar) refresh
+ * immediately instead of only updating after a manual page reload.
+ *
+ * IMPORTANT: use this helper instead of hand-writing query keys — 'finance'
+ * and 'dashboard' are NOT real query keys used anywhere in this app, and
+ * invalidating them silently does nothing.
+ */
+export function invalidateFinanceQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ['todayTransactions'] });
+  queryClient.invalidateQueries({ queryKey: ['transactions'] });
+  queryClient.invalidateQueries({ queryKey: ['cashFlow'] });
+  queryClient.invalidateQueries({ queryKey: ['monthlyCashFlow'] });
+  queryClient.invalidateQueries({ queryKey: ['financeSummary'] });
+  queryClient.invalidateQueries({ queryKey: ['debtors'] });
+  queryClient.invalidateQueries({ queryKey: ['creditors'] });
+  queryClient.invalidateQueries({ queryKey: ['expenseStats'] });
+  queryClient.invalidateQueries({ queryKey: ['profitAndLoss'] });
+}
 
 // ── Expenses ─────────────────────────────────────────────────────────
 
@@ -16,10 +38,7 @@ export function useCreateExpense() {
     mutationFn: (data: Partial<ExpenseData>) => financeApi.createExpense(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['expenseStats'] });
-      queryClient.invalidateQueries({ queryKey: ['cashFlow'] });
-      queryClient.invalidateQueries({ queryKey: ['financeSummary'] });
-      queryClient.invalidateQueries({ queryKey: ['profitAndLoss'] });
+      invalidateFinanceQueries(queryClient);
     },
   });
 }
@@ -31,10 +50,7 @@ export function useUpdateExpense() {
       financeApi.updateExpense(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['expenseStats'] });
-      queryClient.invalidateQueries({ queryKey: ['cashFlow'] });
-      queryClient.invalidateQueries({ queryKey: ['financeSummary'] });
-      queryClient.invalidateQueries({ queryKey: ['profitAndLoss'] });
+      invalidateFinanceQueries(queryClient);
     },
   });
 }
@@ -45,10 +61,7 @@ export function useDeleteExpense() {
     mutationFn: (id: string) => financeApi.deleteExpense(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['expenseStats'] });
-      queryClient.invalidateQueries({ queryKey: ['cashFlow'] });
-      queryClient.invalidateQueries({ queryKey: ['financeSummary'] });
-      queryClient.invalidateQueries({ queryKey: ['profitAndLoss'] });
+      invalidateFinanceQueries(queryClient);
     },
   });
 }

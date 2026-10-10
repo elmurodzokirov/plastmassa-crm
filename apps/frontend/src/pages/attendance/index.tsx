@@ -12,7 +12,7 @@ import {
   Save,
   CheckCheck,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, getErrorMessage } from '@/lib/utils';
 import { useAttendance, useBulkAttendance } from '@/hooks/use-attendance';
 import { useUsers } from '@/hooks/use-users';
 import { toast } from '@/components/ui/use-toast';
@@ -244,8 +244,12 @@ export default function AttendancePage() {
       try {
         await bulkMutation.mutateAsync({ date: dateStr, records: dayRecords });
         toast({ title: `${day}-kun saqlandi`, variant: 'success' });
-      } catch {
-        toast({ title: 'Xatolik', variant: 'destructive' });
+      } catch (error) {
+        toast({
+          title: 'Xatolik',
+          description: getErrorMessage(error, 'Davomatni saqlashda xatolik yuz berdi'),
+          variant: 'destructive',
+        });
       }
       setSavingDay(null);
     },
@@ -283,8 +287,12 @@ export default function AttendancePage() {
       }
       toast({ title: 'Barcha davomat saqlandi', variant: 'success' });
       setDirty(false);
-    } catch {
-      toast({ title: 'Xatolik yuz berdi', variant: 'destructive' });
+    } catch (error) {
+      toast({
+        title: 'Xatolik yuz berdi',
+        description: getErrorMessage(error, 'Davomatni saqlashda xatolik yuz berdi'),
+        variant: 'destructive',
+      });
     }
     setSavingDay(null);
   }, [year, month, users, cells, bulkMutation]);

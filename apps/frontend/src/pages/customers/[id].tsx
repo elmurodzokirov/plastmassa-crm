@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
@@ -15,15 +16,36 @@ import {
 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { useCustomer } from '@/hooks/use-customers';
+import { useOrdersByCustomer } from '@/hooks/use-orders';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
+import { OrderPreviewDialog } from '@/components/orders/order-preview-dialog';
+
+const STATUS_MAP: Record<string, { label: string; variant: 'warning' | 'default' | 'success' | 'destructive' }> = {
+  PENDING: { label: 'Kutilmoqda', variant: 'warning' },
+  CONFIRMED: { label: 'Tasdiqlangan', variant: 'default' },
+  CANCELLED: { label: 'Bekor qilingan', variant: 'destructive' },
+};
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: customer, isLoading, isError } = useCustomer(id || '');
+  const { data: ordersData, isLoading: ordersLoading } = useOrdersByCustomer(id || '', {
+    limit: 20,
+  } as any);
+  const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
+  const customerOrders = ordersData?.items || [];
 
   if (isLoading) {
     return (
@@ -250,16 +272,77 @@ export default function CustomerDetailPage() {
           <h2 className="text-lg font-semibold text-foreground">Buyurtmalar tarixi</h2>
         </div>
 
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/50 mb-4">
-            <PackageOpen className="h-7 w-7 text-muted-foreground" />
+        {ordersLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <LoadingSpinner size="md" />
           </div>
-          <p className="text-sm font-medium text-foreground">Hozircha buyurtmalar yo'q</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Bu mijozning buyurtmalari bu yerda ko'rsatiladi
-          </p>
-        </div>
+        ) : customerOrders.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/50 mb-4">
+              <PackageOpen className="h-7 w-7 text-muted-foreground" />
+            </div>
+            <p className="text-sm font-medium text-foreground">Hozircha buyurtmalar yo'q</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Bu mijozning buyurtmalari bu yerda ko'rsatiladi
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Buyurtma</TableHead>
+                  <TableHead>Sana</TableHead>
+                  <TableHead className="text-right">Jami</TableHead>
+                  <TableHead className="text-right">To'langan</TableHead>
+                  <TableHead className="text-right">Qoldiq</TableHead>
+                  <TableHead>Holat</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {customerOrders.map((order) => {
+                  const statusInfo = STATUS_MAP[order.status] || {
+                    label: order.status,
+                    variant: 'default' as const,
+                  };
+                  const remaining = Math.max(order.totalAmount - (order.paidAmount || 0), 0);
+                  return (
+                    <TableRow
+                      key={order._id}
+                      className="cursor-pointer hover:bg-accent/50"
+                      onClick={() => setPreviewOrderId(order._id)}
+                    >
+                      <TableCell className="font-medium">{order.orderNumber}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {format(new Date(order.createdAt), 'dd.MM.yyyy HH:mm')}
+                      </TableCell>
+                      <TableCell className="text-right">{formatCurrency(order.totalAmount)}</TableCell>
+                      <TableCell className="text-right text-green-400">
+                        {formatCurrency(order.paidAmount || 0)}
+                      </TableCell>
+                      <TableCell
+                        className={cn('text-right', remaining > 0 ? 'text-red-400' : 'text-muted-foreground')}
+                      >
+                        {formatCurrency(remaining)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </motion.div>
+
+      <OrderPreviewDialog
+        orderId={previewOrderId}
+        onOpenChange={(open) => {
+          if (!open) setPreviewOrderId(null);
+        }}
+      />
     </div>
   );
 }

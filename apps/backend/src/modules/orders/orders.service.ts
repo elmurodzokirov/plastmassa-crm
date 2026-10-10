@@ -71,8 +71,15 @@ export class OrdersService {
     createOrderDto: CreateOrderDto,
     userId: string,
   ): Promise<OrderDocument> {
-    const { customer, items, paymentType, paidAmount = 0, notes, dueDate } =
-      createOrderDto;
+    const {
+      customer,
+      items,
+      paymentType,
+      paidAmount = 0,
+      notes,
+      dueDate,
+      orderDiscount = 0,
+    } = createOrderDto;
 
     if (!items.length) {
       throw new BadRequestException(
@@ -89,15 +96,26 @@ export class OrdersService {
     try {
       buildResult = await this.buildOrderItems(items);
 
-      const initialPaidAmount = this.normalizeInitialPaidAmount(
-        paymentType,
-        buildResult.totalAmount,
-        paidAmount,
+      if (orderDiscount < 0) {
+        throw new BadRequestException(
+          'Chegirma manfiy bo\'lishi mumkin emas',
+        );
+      }
+      if (orderDiscount > buildResult.totalAmount) {
+        throw new BadRequestException(
+          'Chegirma buyurtma summasidan katta bo\'lishi mumkin emas',
+        );
+      }
+      const totalAmount = Math.max(
+        buildResult.totalAmount - orderDiscount,
+        0,
       );
-      const debtAmount =
-        paymentType === 'DEBT'
-          ? Math.max(buildResult.totalAmount - initialPaidAmount, 0)
-          : 0;
+
+      const initialPaidAmount = this.normalizeInitialPaidAmount(paidAmount);
+      // Positive => customer owes the remainder on this order. Negative =>
+      // an overpayment, which reduces the customer's other debt or becomes
+      // credit (currentDebt has no lower bound).
+      const debtAmount = totalAmount - initialPaidAmount;
 
       this.ensureDebtLimit(
         customerDoc.currentDebt,
@@ -105,7 +123,7 @@ export class OrdersService {
         debtAmount,
       );
 
-      if (debtAmount > 0) {
+      if (debtAmount !== 0) {
         await this.customersService.updateDebt(customer, debtAmount);
         debtApplied = debtAmount;
       }
@@ -114,12 +132,12 @@ export class OrdersService {
         orderNumber,
         customer,
         items: buildResult.items,
-        totalAmount: buildResult.totalAmount,
+        totalAmount,
+        orderDiscount,
         initialPaidAmount,
         paidAmount: initialPaidAmount,
         totalCost: Math.round(buildResult.totalCost),
-        grossProfit:
-          buildResult.totalAmount - Math.round(buildResult.totalCost),
+        grossProfit: totalAmount - Math.round(buildResult.totalCost),
         status: 'PENDING',
         paymentType,
         notes,
@@ -142,7 +160,7 @@ export class OrdersService {
 
       return this.findById(savedOrder._id.toString());
     } catch (error) {
-      if (debtApplied > 0) {
+      if (debtApplied !== 0) {
         await this.customersService.updateDebt(customer, -debtApplied);
       }
       if (buildResult) {
@@ -177,7 +195,8 @@ export class OrdersService {
     const financialChangeRequested =
       dto.items !== undefined ||
       dto.paymentType !== undefined ||
-      dto.paidAmount !== undefined;
+      dto.paidAmount !== undefined ||
+      dto.orderDiscount !== undefined;
 
     if (paymentTotal > 0 && financialChangeRequested) {
       throw new BadRequestException(
@@ -188,6 +207,7 @@ export class OrdersService {
     const previousState = {
       items: [...(order.items as any[])],
       totalAmount: order.totalAmount,
+      orderDiscount: order.orderDiscount || 0,
       totalCost: order.totalCost,
       grossProfit: order.grossProfit,
       paymentType: order.paymentType,
@@ -214,36 +234,49 @@ export class OrdersService {
 
         buildResult = await this.buildOrderItems(dto.items);
         order.items = buildResult.items as any;
-        order.totalAmount = buildResult.totalAmount;
         order.totalCost = Math.round(buildResult.totalCost);
-        order.grossProfit =
-          buildResult.totalAmount - Math.round(buildResult.totalCost);
       }
+
+      // Raw (pre order-discount) subtotal: from the freshly built items when
+      // items changed, otherwise derived by adding back the previously
+      // applied discount to the order's current (already-discounted) total.
+      const rawSubtotal = buildResult
+        ? buildResult.totalAmount
+        : previousState.totalAmount + previousState.orderDiscount;
+
+      const nextOrderDiscount =
+        dto.orderDiscount !== undefined
+          ? dto.orderDiscount
+          : previousState.orderDiscount;
+
+      if (nextOrderDiscount < 0) {
+        throw new BadRequestException(
+          'Chegirma manfiy bo\'lishi mumkin emas',
+        );
+      }
+      if (nextOrderDiscount > rawSubtotal) {
+        throw new BadRequestException(
+          'Chegirma buyurtma summasidan katta bo\'lishi mumkin emas',
+        );
+      }
+
+      order.totalAmount = Math.max(rawSubtotal - nextOrderDiscount, 0);
+      order.orderDiscount = nextOrderDiscount;
+      order.grossProfit = order.totalAmount - order.totalCost;
 
       const nextPaymentType = dto.paymentType || order.paymentType;
       const nextInitialPaidAmount = this.normalizeInitialPaidAmount(
-        nextPaymentType,
-        order.totalAmount,
         dto.paidAmount !== undefined
           ? dto.paidAmount
           : previousState.initialPaidAmount,
       );
       const nextPaidAmount = nextInitialPaidAmount + paymentTotal;
 
-      if (nextPaidAmount > order.totalAmount) {
-        throw new BadRequestException(
-          'To\'langan summa buyurtma summasidan katta bo\'lishi mumkin emas',
-        );
-      }
-
-      const oldDebt =
-        previousState.paymentType === 'DEBT'
-          ? Math.max(previousState.totalAmount - previousState.paidAmount, 0)
-          : 0;
-      const newDebt =
-        nextPaymentType === 'DEBT'
-          ? Math.max(order.totalAmount - nextPaidAmount, 0)
-          : 0;
+      // Overpaying (nextPaidAmount > order.totalAmount) is allowed — the
+      // excess reduces the customer's other debt or becomes credit below,
+      // instead of being blocked.
+      const oldDebt = previousState.totalAmount - previousState.paidAmount;
+      const newDebt = order.totalAmount - nextPaidAmount;
 
       const customerDoc = await this.customersService.findById(
         order.customer.toString(),
@@ -680,24 +713,14 @@ export class OrdersService {
     };
   }
 
-  private normalizeInitialPaidAmount(
-    paymentType: string,
-    totalAmount: number,
-    paidAmount: number,
-  ): number {
-    if (paymentType === 'CASH' || paymentType === 'TRANSFER') {
-      return totalAmount;
-    }
-
+  // Payment type (CASH/TRANSFER/DEBT) is now just a derived label based on
+  // whether the amount covers the total — it no longer forces the paid
+  // amount to any particular value. The only real constraint is that it
+  // can't be negative; it may exceed the order total (overpayment).
+  private normalizeInitialPaidAmount(paidAmount: number): number {
     if (paidAmount < 0) {
       throw new BadRequestException(
         'To\'langan summa manfiy bo\'lishi mumkin emas',
-      );
-    }
-
-    if (paidAmount > totalAmount) {
-      throw new BadRequestException(
-        'To\'langan summa buyurtma summasidan katta bo\'lishi mumkin emas',
       );
     }
 

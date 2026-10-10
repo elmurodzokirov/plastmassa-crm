@@ -20,6 +20,7 @@ import {
   useDeleteMachine,
 } from '@/hooks/use-machines';
 import { toast } from '@/components/ui/use-toast';
+import { getErrorMessage } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -143,8 +144,8 @@ export default function MachinesPage() {
         }
         setDialogOpen(false);
         reset(EMPTY_FORM_VALUES);
-      } catch {
-        toast({ title: 'Xatolik', description: 'Amalni bajarishda xatolik yuz berdi', variant: 'destructive' });
+      } catch (error) {
+        toast({ title: 'Xatolik', description: getErrorMessage(error, 'Amalni bajarishda xatolik yuz berdi'), variant: 'destructive' });
       }
     },
     [editingMachine, createMutation, updateMutation, reset],
@@ -157,8 +158,8 @@ export default function MachinesPage() {
       toast({ title: 'Muvaffaqiyatli', description: 'Stanok muvaffaqiyatli o\'chirildi' });
       setDeleteDialogOpen(false);
       setDeletingMachine(null);
-    } catch {
-      toast({ title: 'Xatolik', description: 'O\'chirishda xatolik yuz berdi', variant: 'destructive' });
+    } catch (error) {
+      toast({ title: 'Xatolik', description: getErrorMessage(error, 'O\'chirishda xatolik yuz berdi'), variant: 'destructive' });
     }
   }, [deletingMachine, deleteMutation]);
 

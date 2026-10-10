@@ -343,6 +343,7 @@ export class FinanceService {
       debtResult,
       supplierPaymentTotal,
       creditResult,
+      returnRefundResult,
     ] = await Promise.all([
       this.getInitialOrderIncomeTotal(),
       this.getPaymentIncomeTotal(),
@@ -362,12 +363,21 @@ export class FinanceService {
           { $group: { _id: null, total: { $sum: '$currentDebt' } } },
         ])
         .exec(),
+      this.returnModel
+        .aggregate([
+          { $match: { status: 'APPROVED', refundAmount: { $gt: 0 } } },
+          { $group: { _id: null, total: { $sum: '$refundAmount' } } },
+        ])
+        .exec(),
     ]);
 
     const totalRevenue = initialRevenue + paymentRevenue;
+    const returnRefundTotal =
+      returnRefundResult.length > 0 ? returnRefundResult[0].total : 0;
     const totalExpenses =
       (expensesResult.length > 0 ? expensesResult[0].total : 0) +
-      supplierPaymentTotal;
+      supplierPaymentTotal +
+      returnRefundTotal;
     const totalDebt = debtResult.length > 0 ? debtResult[0].total : 0;
     const totalCredit = creditResult.length > 0 ? creditResult[0].total : 0;
     const netProfit = totalRevenue - totalExpenses;
@@ -378,6 +388,9 @@ export class FinanceService {
       totalDebt,
       totalCredit,
       netProfit,
+      // All-time cash in minus all-time cash out — the actual amount of
+      // money physically in the register right now, independent of any
+      // date filter (unlike the Kassa tab's period-scoped Kirim/Chiqim).
       cashOnHand: netProfit,
     };
   }

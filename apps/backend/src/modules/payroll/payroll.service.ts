@@ -17,6 +17,7 @@ import { QueryPayrollDto } from './dto/query-payroll.dto';
 import { AttendanceService } from '../attendance/attendance.service';
 import { UsersService } from '../users/users.service';
 import { ProductionLog, ProductionLogDocument } from '../production/schemas/production-log.schema';
+import { ExpensesService } from '../expenses/expenses.service';
 
 const DEFAULT_WORKING_DAYS = 26;
 
@@ -31,6 +32,7 @@ export class PayrollService {
     private readonly productionLogModel: Model<ProductionLogDocument>,
     private readonly attendanceService: AttendanceService,
     private readonly usersService: UsersService,
+    private readonly expensesService: ExpensesService,
   ) {}
 
   // ─── Advance Methods ───────────────────────────────────────────
@@ -145,7 +147,23 @@ export class PayrollService {
     advance.status = dto.status;
     advance.approvedBy = new Types.ObjectId(approvedById);
 
-    return advance.save();
+    const savedAdvance = await advance.save();
+
+    if (dto.status === 'APPROVED') {
+      const user = await this.usersService.findById(advance.user.toString());
+      await this.expensesService.create(
+        {
+          category: 'Maosh',
+          description: `Avans: ${(user as any).fullName}`,
+          amount: advance.amount,
+          date: new Date().toISOString(),
+          paymentMethod: 'cash',
+        } as any,
+        approvedById,
+      );
+    }
+
+    return savedAdvance;
   }
 
   async getAdvancesByUser(
@@ -545,6 +563,7 @@ export class PayrollService {
   async updateStatus(
     id: string,
     dto: UpdatePayrollStatusDto,
+    updatedById: string,
   ): Promise<PayrollDocument> {
     const payroll = await this.payrollModel.findById(id).exec();
 
@@ -566,7 +585,23 @@ export class PayrollService {
 
     payroll.status = dto.status;
 
-    return payroll.save();
+    const savedPayroll = await payroll.save();
+
+    if (dto.status === 'PAID' && payroll.paidAmount > 0) {
+      const user = await this.usersService.findById(payroll.user.toString());
+      await this.expensesService.create(
+        {
+          category: 'Maosh',
+          description: `Ish haqi: ${(user as any).fullName} (${payroll.month}/${payroll.year})`,
+          amount: payroll.paidAmount,
+          date: new Date().toISOString(),
+          paymentMethod: 'cash',
+        } as any,
+        updatedById,
+      );
+    }
+
+    return savedPayroll;
   }
 
   async getPayrollByMonth(

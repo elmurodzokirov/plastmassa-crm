@@ -1,5 +1,7 @@
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import { ordersApi, OrderQuery } from '@/api/orders';
+import { invalidateFinanceQueries } from './use-finance';
+import { invalidateDashboardQueries } from './use-dashboard';
 
 export function useOrders(params?: OrderQuery) {
   return useQuery({
@@ -23,6 +25,9 @@ export function useCreateOrder() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['overdueDebts'] });
+      invalidateDashboardQueries(queryClient);
+      invalidateFinanceQueries(queryClient);
     },
   });
 }
@@ -35,6 +40,9 @@ export function useUpdateOrder() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['overdueDebts'] });
+      invalidateDashboardQueries(queryClient);
+      invalidateFinanceQueries(queryClient);
     },
   });
 }
@@ -47,6 +55,9 @@ export function useUpdateOrderStatus() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['overdueDebts'] });
+      invalidateDashboardQueries(queryClient);
+      invalidateFinanceQueries(queryClient);
     },
   });
 }

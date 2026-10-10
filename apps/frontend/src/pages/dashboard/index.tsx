@@ -194,27 +194,29 @@ export default function DashboardPage(): React.ReactElement {
         initial="hidden"
         animate="show"
         className={cn(
-          "grid grid-cols-1 gap-5",
+          "grid grid-cols-1 gap-5 items-stretch",
           canSeeOrders && canSeeFinance ? "xl:grid-cols-2" : "",
         )}
       >
         {/* Recent Orders */}
         {canSeeOrders && (
-        <motion.div variants={item}>
-          <Card>
+        <motion.div variants={item} className="h-full">
+          <Card className="h-full flex flex-col">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <ListOrdered className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                 Oxirgi buyurtmalar
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-1 flex flex-col">
               {ordersLoading ? (
-                <div className="flex items-center justify-center py-8">
+                <div className="flex flex-1 items-center justify-center py-8">
                   <LoadingSpinner size="md" />
                 </div>
               ) : orders.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8 text-sm">Buyurtmalar topilmadi</p>
+                <div className="flex flex-1 items-center justify-center">
+                  <p className="text-center text-muted-foreground py-8 text-sm">Buyurtmalar topilmadi</p>
+                </div>
               ) : (
                 <div className="space-y-0">
                   {orders.map((order, idx) => {
@@ -259,21 +261,23 @@ export default function DashboardPage(): React.ReactElement {
 
         {/* Recent Payments */}
         {canSeeFinance && (
-        <motion.div variants={item}>
-          <Card>
+        <motion.div variants={item} className="h-full">
+          <Card className="h-full flex flex-col">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Banknote className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                 Oxirgi to'lovlar
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-1 flex flex-col">
               {paymentsLoading ? (
-                <div className="flex items-center justify-center py-8">
+                <div className="flex flex-1 items-center justify-center py-8">
                   <LoadingSpinner size="md" />
                 </div>
               ) : payments.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8 text-sm">To'lovlar topilmadi</p>
+                <div className="flex flex-1 items-center justify-center">
+                  <p className="text-center text-muted-foreground py-8 text-sm">To'lovlar topilmadi</p>
+                </div>
               ) : (
                 <div className="space-y-0">
                   {payments.map((payment, idx) => (

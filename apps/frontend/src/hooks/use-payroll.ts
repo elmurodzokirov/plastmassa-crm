@@ -1,5 +1,6 @@
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import { payrollApi, AdvanceQuery, PayrollQuery } from '@/api/payroll';
+import { invalidateFinanceQueries } from './use-finance';
 
 // ── Advances ──────────────────────────────────────────────────────────
 
@@ -27,6 +28,9 @@ export function useUpdateAdvanceStatus() {
       payrollApi.updateAdvanceStatus(id, status),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['advances'] });
+      // Approving an advance now records a "Maosh" expense.
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      invalidateFinanceQueries(queryClient);
     },
   });
 }
@@ -79,6 +83,9 @@ export function useUpdatePayrollStatus() {
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
       queryClient.invalidateQueries({ queryKey: ['payrollByMonth'] });
       queryClient.invalidateQueries({ queryKey: ['payroll'] });
+      // Marking payroll as PAID now records a "Maosh" expense.
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      invalidateFinanceQueries(queryClient);
     },
   });
 }

@@ -107,6 +107,9 @@ export class Order {
   totalAmount: number;
 
   @Prop({ default: 0, min: 0 })
+  orderDiscount: number;
+
+  @Prop({ default: 0, min: 0 })
   initialPaidAmount: number;
 
   @Prop({ default: 0, min: 0 })

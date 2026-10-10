@@ -13,6 +13,20 @@ export function formatNumber(num: number): string {
   return num.toLocaleString('uz-UZ');
 }
 
+/**
+ * Extracts the backend's actual error message (from the NestJS
+ * `{ message: ... }` response body) so toasts show the real reason
+ * instead of a generic fallback. Falls back to `fallback` when the
+ * error has no such message (network error, unexpected shape, etc.).
+ */
+export function getErrorMessage(error: unknown, fallback: string): string {
+  const message = (error as any)?.response?.data?.message;
+  if (Array.isArray(message)) {
+    return message.join(', ');
+  }
+  return message || fallback;
+}
+
 export function getInitials(name: string): string {
   return name
     .split(' ')

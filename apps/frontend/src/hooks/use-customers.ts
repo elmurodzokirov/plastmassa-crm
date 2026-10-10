@@ -1,6 +1,7 @@
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import { customersApi, CustomerQuery } from '@/api/customers';
 import type { Customer } from '@plastmassa/shared';
+import { invalidateFinanceQueries } from './use-finance';
 
 export function useCustomers(params?: CustomerQuery) {
   return useQuery({
@@ -59,6 +60,7 @@ export function useSetCustomerBalance() {
       customersApi.setBalance(id, amount),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      invalidateFinanceQueries(queryClient);
     },
   });
 }

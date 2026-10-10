@@ -6,6 +6,7 @@ import type { Product } from '@plastmassa/shared';
 import { useUnits } from '@/hooks/use-units';
 import { useCreateProduct } from '@/hooks/use-products';
 import { toast } from '@/components/ui/use-toast';
+import { getErrorMessage } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -102,8 +103,8 @@ export function QuickCreateProductDialog({
         toast({ title: 'Muvaffaqiyatli', description: 'Yangi mahsulot yaratildi' });
         onCreated(product);
         onOpenChange(false);
-      } catch {
-        toast({ title: 'Xatolik', description: 'Mahsulot yaratishda xatolik yuz berdi', variant: 'destructive' });
+      } catch (error) {
+        toast({ title: 'Xatolik', description: getErrorMessage(error, 'Mahsulot yaratishda xatolik yuz berdi'), variant: 'destructive' });
       }
     },
     [createMutation, imageFile, onCreated, onOpenChange],

@@ -13,7 +13,7 @@ import {
   Percent,
 } from 'lucide-react';
 import type { Customer, Product, Unit } from '@plastmassa/shared';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, getErrorMessage } from '@/lib/utils';
 import { useCustomers } from '@/hooks/use-customers';
 import { useProducts } from '@/hooks/use-products';
 import { useCreateOrder } from '@/hooks/use-orders';
@@ -90,8 +90,9 @@ export default function NewOrderPage() {
   const debouncedProductSearch = useDebounce(productSearch, 300);
 
   // Payment
-  const [paymentType, setPaymentType] = useState<string>('CASH');
   const [paidAmount, setPaidAmount] = useState<number>(0);
+  const [paidAmountTouched, setPaidAmountTouched] = useState(false);
+  const [orderDiscount, setOrderDiscount] = useState<number>(0);
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -180,6 +181,13 @@ export default function NewOrderPage() {
     [cart],
   );
 
+  // Final payable total after the order-level discount
+  const discountedTotal = Math.max(cartTotal - orderDiscount, 0);
+
+  // Payment type is no longer chosen manually — it's derived from the
+  // amount entered: fully covered => CASH, anything less => DEBT.
+  const paymentType = paidAmount >= discountedTotal ? 'CASH' : 'DEBT';
+
   // ── Leave-page guard: while the cart has items, any way of navigating away
   // (in-app link, our own back button, browser Back/Forward, tab close/refresh)
   // is intercepted and requires confirmation first.
@@ -258,13 +266,13 @@ export default function NewOrderPage() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [cart.length, requestLeave]);
 
+  // Default the payment field to the full payable amount as the cart/discount
+  // change, until the cashier manually edits it — after that it's left alone.
   useEffect(() => {
-    if (paymentType === 'CASH' || paymentType === 'TRANSFER') {
-      setPaidAmount(cartTotal);
-    } else {
-      setPaidAmount(0);
+    if (!paidAmountTouched) {
+      setPaidAmount(discountedTotal);
     }
-  }, [paymentType, cartTotal]);
+  }, [discountedTotal, paidAmountTouched]);
 
   const getUnitName = (unit: string | Unit): string => {
     if (typeof unit === 'string') return unit;
@@ -416,6 +424,7 @@ export default function NewOrderPage() {
       })),
       paidAmount,
       paymentType,
+      orderDiscount,
       dueDate: paymentType === 'DEBT' && dueDate ? dueDate : undefined,
       notes: notes || undefined,
     };
@@ -427,23 +436,20 @@ export default function NewOrderPage() {
     } catch (error: any) {
       toast({
         title: 'Xatolik',
-        description: error?.response?.data?.message || 'Buyurtma yaratishda xatolik',
+        description: getErrorMessage(error, 'Buyurtma yaratishda xatolik'),
         variant: 'destructive',
       });
     }
-  }, [selectedCustomer, cart, cartTotal, paidAmount, paymentType, dueDate, notes, createOrderMutation, navigate]);
+  }, [selectedCustomer, cart, paidAmount, paymentType, orderDiscount, dueDate, notes, createOrderMutation, navigate]);
 
-  const remaining = cartTotal - paidAmount;
+  const remaining = discountedTotal - paidAmount;
+  const isOverpaid = paidAmount > discountedTotal;
+  const isFullyPaid = paidAmount === discountedTotal;
   const wouldExceedDebtLimit =
     selectedCustomer && paymentType === 'DEBT'
       ? selectedCustomer.currentDebt + remaining > selectedCustomer.debtLimit && selectedCustomer.debtLimit > 0
       : false;
-  const hasInvalidPaidAmount = paidAmount < 0 || paidAmount > cartTotal;
-  const canSubmit =
-    !!selectedCustomer &&
-    cart.length > 0 &&
-    !wouldExceedDebtLimit &&
-    !hasInvalidPaidAmount;
+  const canSubmit = !!selectedCustomer && cart.length > 0 && !wouldExceedDebtLimit;
 
   return (
     <div className="min-h-[calc(100vh-6rem)] flex flex-col">
@@ -763,49 +769,64 @@ export default function NewOrderPage() {
             {/* Total */}
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Jami</span>
-              <span className="text-xl font-bold text-foreground tabular-nums">{formatCurrency(cartTotal)}</span>
+              <span className="text-xl font-bold text-foreground tabular-nums">{formatCurrency(discountedTotal)}</span>
             </div>
 
-            {/* Payment type + amount */}
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Select value={paymentType} onValueChange={(v) => setPaymentType(v)}>
-                <SelectTrigger className="h-9 w-full text-sm sm:w-[110px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CASH">Naqd</SelectItem>
-                  <SelectItem value="TRANSFER">O'tkazma</SelectItem>
-                  <SelectItem value="DEBT">Nasiya</SelectItem>
-                </SelectContent>
-              </Select>
-              <SelectOnFocusInput
+            {/* Discount */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Chegirma</Label>
+              <Input
                 type="number"
                 min={0}
                 max={cartTotal}
                 step="any"
-                value={paidAmount}
-                onChange={(e) => {
-                  const rawValue = parseFloat(e.target.value);
-                  const nextValue = Number.isFinite(rawValue) ? rawValue : 0;
-                  setPaidAmount(Math.min(Math.max(nextValue, 0), cartTotal));
-                }}
-                disabled={paymentType === 'CASH' || paymentType === 'TRANSFER'}
-                className="h-9 flex-1 text-sm"
-                placeholder="To'langan"
+                value={orderDiscount || ''}
+                onChange={(e) => setOrderDiscount(parseFloat(e.target.value) || 0)}
+                className="h-9 text-sm"
+                placeholder="0"
               />
             </div>
 
-            {/* Due date for DEBT */}
-            {paymentType === 'DEBT' && (
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">To'lov muddati</Label>
-                <Input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="h-9 text-sm"
+            {/* Payment amount + due date — same row */}
+            <div className="flex items-start gap-2">
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs text-muted-foreground">To'lov summasi</Label>
+                <SelectOnFocusInput
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={paidAmount || ''}
+                  onChange={(e) => {
+                    setPaidAmountTouched(true);
+                    setPaidAmount(parseFloat(e.target.value) || 0);
+                  }}
+                  className={cn(
+                    'h-9 text-sm border',
+                    isOverpaid
+                      ? 'bg-amber-500/10 border-amber-500/50 focus-visible:ring-amber-500/40'
+                      : isFullyPaid
+                        ? 'bg-green-500/10 border-green-500/50 focus-visible:ring-green-500/40'
+                        : 'bg-red-500/10 border-red-500/50 focus-visible:ring-red-500/40',
+                  )}
+                  placeholder="To'lanmasa — nasiyaga sotiladi"
                 />
               </div>
+              {paymentType === 'DEBT' && (
+                <div className="w-36 shrink-0 space-y-1">
+                  <Label className="text-xs text-muted-foreground">To'lov muddati</Label>
+                  <Input
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                </div>
+              )}
+            </div>
+            {isOverpaid && (
+              <p className="text-[11px] text-amber-500 -mt-2">
+                To'lov summasiga e'tibor bering — jami summadan oshib ketdi
+              </p>
             )}
 
             {/* Remaining */}
@@ -814,12 +835,6 @@ export default function NewOrderPage() {
                 <span className="text-muted-foreground">Qoldiq (qarz)</span>
                 <span className="font-semibold text-red-500">{formatCurrency(remaining)}</span>
               </div>
-            )}
-
-            {hasInvalidPaidAmount && (
-              <p className="text-xs text-red-500">
-                To&apos;langan summa jami summadan katta bo&apos;lishi mumkin emas
-              </p>
             )}
 
             {/* Debt warning */}

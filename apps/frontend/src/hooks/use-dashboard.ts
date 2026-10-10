@@ -1,5 +1,15 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, QueryClient } from '@tanstack/react-query';
 import { dashboardApi } from '@/api/dashboard';
+
+/** Call after any mutation that changes revenue/orders/payments so the
+ * Bosh sahifa (dashboard) widgets refresh instead of only updating on reload. */
+export function invalidateDashboardQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+  queryClient.invalidateQueries({ queryKey: ['recentOrders'] });
+  queryClient.invalidateQueries({ queryKey: ['recentPayments'] });
+  queryClient.invalidateQueries({ queryKey: ['monthlyRevenue'] });
+  queryClient.invalidateQueries({ queryKey: ['salesChart'] });
+}
 
 export function useDashboardStats() {
   return useQuery({

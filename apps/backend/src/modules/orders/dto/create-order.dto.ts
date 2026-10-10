@@ -60,6 +60,11 @@ export class CreateOrderDto {
   @IsOptional()
   paidAmount?: number;
 
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  orderDiscount?: number;
+
   @IsString()
   @IsOptional()
   notes?: string;

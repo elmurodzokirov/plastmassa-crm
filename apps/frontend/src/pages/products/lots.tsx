@@ -14,7 +14,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import type { Product, Supplier, Unit } from '@plastmassa/shared';
-import { cn, formatCurrency, formatNumber } from '@/lib/utils';
+import { cn, formatCurrency, formatNumber, getErrorMessage } from '@/lib/utils';
 import { useProducts } from '@/hooks/use-products';
 import { useProductLots, useProductLotBatches, useCreateProductLotBatch } from '@/hooks/use-product-lots';
 import { useUnits } from '@/hooks/use-units';
@@ -350,8 +350,8 @@ export default function ProductLotsPage() {
         toast({ title: 'Muvaffaqiyatli', description: 'Yangi kirim muvaffaqiyatli saqlandi' });
         setDialogOpen(false);
         reset();
-      } catch {
-        toast({ title: 'Xatolik', description: 'Kirimni saqlashda xatolik yuz berdi', variant: 'destructive' });
+      } catch (error) {
+        toast({ title: 'Xatolik', description: getErrorMessage(error, 'Kirimni saqlashda xatolik yuz berdi'), variant: 'destructive' });
       }
     },
     [createBatchMutation, reset],

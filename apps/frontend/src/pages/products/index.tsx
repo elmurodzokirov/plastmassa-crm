@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Product, Unit } from '@plastmassa/shared';
-import { formatCurrency, exportToCsv, cn } from '@/lib/utils';
+import { formatCurrency, exportToCsv, cn, getErrorMessage } from '@/lib/utils';
 import {
   useProducts,
   useCreateProduct,
@@ -348,10 +348,10 @@ export default function ProductsPage() {
         setDialogOpen(false);
         reset(EMPTY_PRODUCT_FORM_VALUES);
         resetImageState();
-      } catch {
+      } catch (error) {
         toast({
           title: 'Xatolik',
-          description: 'Amalni bajarishda xatolik yuz berdi',
+          description: getErrorMessage(error, 'Amalni bajarishda xatolik yuz berdi'),
           variant: 'destructive',
         });
       }
@@ -369,10 +369,10 @@ export default function ProductsPage() {
       });
       setDeleteDialogOpen(false);
       setDeletingProduct(null);
-    } catch {
+    } catch (error) {
       toast({
         title: 'Xatolik',
-        description: 'O\'chirishda xatolik yuz berdi',
+        description: getErrorMessage(error, 'O\'chirishda xatolik yuz berdi'),
         variant: 'destructive',
       });
     }

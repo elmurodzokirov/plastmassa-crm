@@ -11,7 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import type { Customer, Product } from '@plastmassa/shared';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, getErrorMessage } from '@/lib/utils';
 import { useCustomers } from '@/hooks/use-customers';
 import { useProducts } from '@/hooks/use-products';
 import { useCreateReturn } from '@/hooks/use-returns';
@@ -202,10 +202,10 @@ export default function NewCustomerReturnPage() {
       });
       toast({ title: 'Muvaffaqiyatli', description: "Qaytarish hujjati yaratildi" });
       navigate('/returns');
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Xatolik',
-        description: error?.response?.data?.message || "Qaytarish yaratishda xatolik",
+        description: getErrorMessage(error, "Qaytarish yaratishda xatolik"),
         variant: 'destructive',
       });
     }

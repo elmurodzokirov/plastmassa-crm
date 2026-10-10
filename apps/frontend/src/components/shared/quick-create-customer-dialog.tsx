@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { Customer } from '@plastmassa/shared';
 import { useCreateCustomer } from '@/hooks/use-customers';
 import { toast } from '@/components/ui/use-toast';
+import { getErrorMessage } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,8 +70,8 @@ export function QuickCreateCustomerDialog({
         toast({ title: 'Muvaffaqiyatli', description: 'Yangi mijoz yaratildi' });
         onCreated(customer);
         onOpenChange(false);
-      } catch {
-        toast({ title: 'Xatolik', description: 'Mijoz yaratishda xatolik yuz berdi', variant: 'destructive' });
+      } catch (error) {
+        toast({ title: 'Xatolik', description: getErrorMessage(error, 'Mijoz yaratishda xatolik yuz berdi'), variant: 'destructive' });
       }
     },
     [createMutation, onCreated, onOpenChange],

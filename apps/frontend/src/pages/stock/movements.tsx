@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Product, Unit, User, StockMovementType } from '@plastmassa/shared';
-import { cn, exportToCsv, formatNumber } from '@/lib/utils';
+import { cn, exportToCsv, formatNumber, getErrorMessage } from '@/lib/utils';
 import { useStockMovements, useCreateStockMovement } from '@/hooks/use-stock';
 import { useProducts } from '@/hooks/use-products';
 import { useUnits } from '@/hooks/use-units';
@@ -288,10 +288,10 @@ export default function StockMovementsPage() {
         });
         setDialogOpen(false);
         reset();
-      } catch {
+      } catch (error) {
         toast({
           title: 'Xatolik',
-          description: 'Amalni bajarishda xatolik yuz berdi',
+          description: getErrorMessage(error, 'Amalni bajarishda xatolik yuz berdi'),
           variant: 'destructive',
         });
       }

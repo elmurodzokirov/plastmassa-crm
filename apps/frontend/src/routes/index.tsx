@@ -32,6 +32,8 @@ const AttendancePage = lazy(() => import('@/pages/attendance/index'));
 const PayrollPage = lazy(() => import('@/pages/payroll/index'));
 const PayrollSlipPage = lazy(() => import('@/pages/payroll/PayrollSlipPage'));
 const FinancePage = lazy(() => import('@/pages/finance/FinancePage'));
+const KirimPage = lazy(() => import('@/pages/finance/kirim/index'));
+const ChiqimPage = lazy(() => import('@/pages/finance/chiqim/index'));
 const ReportsHubPage = lazy(() => import('@/pages/reports/ReportsHubPage'));
 const ReportsPage = lazy(() => import('@/pages/reports/ReportsPage'));
 const RolesPage = lazy(() => import('@/pages/roles/index'));
@@ -93,6 +95,8 @@ export function AppRoutes() {
 
           {/* Moliya */}
           <Route path="finance" element={<PermissionRoute permission="finance:read"><FinancePage /></PermissionRoute>} />
+          <Route path="finance/kirim" element={<PermissionRoute permission="finance:read"><KirimPage /></PermissionRoute>} />
+          <Route path="finance/chiqim" element={<PermissionRoute permission="finance:read"><ChiqimPage /></PermissionRoute>} />
 
           {/* Hisobotlar */}
           <Route path="reports" element={<PermissionRoute permission="reports:read"><ReportsHubPage /></PermissionRoute>} />

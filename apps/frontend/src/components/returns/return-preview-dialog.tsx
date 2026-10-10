@@ -4,7 +4,7 @@ import { CheckCircle2, ExternalLink } from 'lucide-react';
 import type { Order, Customer } from '@plastmassa/shared';
 import { useReturn, useApproveReturn } from '@/hooks/use-returns';
 import { usePermissions } from '@/hooks/use-permissions';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, getErrorMessage } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -76,11 +76,10 @@ export function ReturnPreviewDialog({
     try {
       await approveMutation.mutateAsync(item._id);
       toast({ title: 'Muvaffaqiyatli', description: 'Qaytarish tasdiqlandi' });
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Xatolik',
-        description:
-          error?.response?.data?.message || 'Qaytarishni tasdiqlashda xatolik yuz berdi',
+        description: getErrorMessage(error, 'Qaytarishni tasdiqlashda xatolik yuz berdi'),
         variant: 'destructive',
       });
     } finally {

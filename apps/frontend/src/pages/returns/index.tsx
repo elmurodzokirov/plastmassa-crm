@@ -15,7 +15,7 @@ import type {
 } from '@plastmassa/shared';
 import { useReturns, useApproveReturn } from '@/hooks/use-returns';
 import { usePermissions } from '@/hooks/use-permissions';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, getErrorMessage } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -135,11 +135,10 @@ export default function ReturnsPage() {
         description: 'Qaytarish tasdiqlandi',
       });
       setSelectedReturn(null);
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Xatolik',
-        description:
-          error?.response?.data?.message || 'Qaytarishni tasdiqlashda xatolik yuz berdi',
+        description: getErrorMessage(error, 'Qaytarishni tasdiqlashda xatolik yuz berdi'),
         variant: 'destructive',
       });
     }

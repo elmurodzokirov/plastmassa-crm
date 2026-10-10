@@ -59,6 +59,11 @@ export class UpdateOrderDto {
   paidAmount?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  orderDiscount?: number;
+
+  @IsOptional()
   @IsString()
   notes?: string;
 

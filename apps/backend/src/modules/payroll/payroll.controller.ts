@@ -114,7 +114,8 @@ export class PayrollController {
   async updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdatePayrollStatusDto,
+    @CurrentUser('_id') userId: string,
   ) {
-    return this.payrollService.updateStatus(id, dto);
+    return this.payrollService.updateStatus(id, dto, userId);
   }
 }

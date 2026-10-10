@@ -17,7 +17,7 @@ import {
   Scale,
 } from 'lucide-react';
 import type { Customer } from '@plastmassa/shared';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, getErrorMessage } from '@/lib/utils';
 import {
   useCustomers,
   useDebtSummary,
@@ -187,8 +187,8 @@ export default function CustomersPage() {
       toast({ title: 'Muvaffaqiyatli', description: 'Saldo yangilandi' });
       setBalanceDialogOpen(false);
       setBalanceCustomer(null);
-    } catch {
-      toast({ title: 'Xatolik', description: 'Saldoni yangilashda xatolik yuz berdi', variant: 'destructive' });
+    } catch (error) {
+      toast({ title: 'Xatolik', description: getErrorMessage(error, 'Saldoni yangilashda xatolik yuz berdi'), variant: 'destructive' });
     }
   }, [balanceCustomer, balanceValue, setBalanceMutation]);
 
@@ -211,10 +211,10 @@ export default function CustomersPage() {
         }
         setDialogOpen(false);
         reset();
-      } catch {
+      } catch (error) {
         toast({
           title: 'Xatolik',
-          description: 'Amalni bajarishda xatolik yuz berdi',
+          description: getErrorMessage(error, 'Amalni bajarishda xatolik yuz berdi'),
           variant: 'destructive',
         });
       }
@@ -232,10 +232,10 @@ export default function CustomersPage() {
       });
       setDeleteDialogOpen(false);
       setDeletingCustomer(null);
-    } catch {
+    } catch (error) {
       toast({
         title: 'Xatolik',
-        description: "O'chirishda xatolik yuz berdi",
+        description: getErrorMessage(error, "O'chirishda xatolik yuz berdi"),
         variant: 'destructive',
       });
     }

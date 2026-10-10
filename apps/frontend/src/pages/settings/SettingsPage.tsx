@@ -11,6 +11,7 @@ import {
 import { useAuthStore } from '@/stores/auth.store';
 import { useSettings, useUpdateSetting, useSeedSettings } from '@/hooks/use-settings';
 import { toast } from '@/components/ui/use-toast';
+import { getErrorMessage } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,10 +72,10 @@ export default function SettingsPage() {
           delete updated[key];
           return updated;
         });
-      } catch {
+      } catch (error) {
         toast({
           title: 'Xatolik',
-          description: 'Sozlamani saqlashda xatolik yuz berdi',
+          description: getErrorMessage(error, 'Sozlamani saqlashda xatolik yuz berdi'),
           variant: 'destructive',
         });
       }
@@ -90,10 +91,10 @@ export default function SettingsPage() {
         description: "Boshlang'ich sozlamalar yuklandi",
         variant: 'success',
       });
-    } catch {
+    } catch (error) {
       toast({
         title: 'Xatolik',
-        description: "Boshlang'ich sozlamalarni yuklashda xatolik yuz berdi",
+        description: getErrorMessage(error, "Boshlang'ich sozlamalarni yuklashda xatolik yuz berdi"),
         variant: 'destructive',
       });
     }

@@ -6,6 +6,7 @@ import {
   SupplierPaymentQuery,
   SupplierPaymentCreateInput,
 } from '@/api/suppliers';
+import { invalidateFinanceQueries } from './use-finance';
 
 export function useSuppliers(params?: SupplierQuery) {
   return useQuery({
@@ -57,6 +58,7 @@ export function useSetSupplierBalance() {
       suppliersApi.setBalance(id, amount),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      invalidateFinanceQueries(queryClient);
     },
   });
 }
@@ -85,10 +87,7 @@ export function useCreateSupplierPayment() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
       queryClient.invalidateQueries({ queryKey: ['supplier-payments'] });
-      queryClient.invalidateQueries({ queryKey: ['creditors'] });
-      queryClient.invalidateQueries({ queryKey: ['cashFlow'] });
-      queryClient.invalidateQueries({ queryKey: ['monthlyCashFlow'] });
-      queryClient.invalidateQueries({ queryKey: ['financeSummary'] });
+      invalidateFinanceQueries(queryClient);
     },
   });
 }

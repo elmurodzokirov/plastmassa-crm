@@ -24,7 +24,7 @@ import {
   ArrowRightLeft,
   Package,
 } from 'lucide-react';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, getErrorMessage } from '@/lib/utils';
 import {
   usePayrollByMonth,
   useUpdatePayrollStatus,
@@ -839,10 +839,10 @@ export default function PayrollPage() {
       if (skippedItems.length === 0) {
         setEditMode(false);
       }
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Xatolik yuz berdi',
-        description: error?.response?.data?.message || 'Payroll hisoblashda xatolik yuz berdi',
+        description: getErrorMessage(error, 'Payroll hisoblashda xatolik yuz berdi'),
         variant: 'destructive',
       });
     }
@@ -853,8 +853,12 @@ export default function PayrollPage() {
     try {
       await updatePayrollStatus.mutateAsync({ id, status: 'CONFIRMED' });
       toast({ title: 'Tasdiqlandi', variant: 'success' });
-    } catch {
-      toast({ title: 'Xatolik', variant: 'destructive' });
+    } catch (error) {
+      toast({
+        title: 'Xatolik',
+        description: getErrorMessage(error, 'Tasdiqlashda xatolik yuz berdi'),
+        variant: 'destructive',
+      });
     }
   }, [updatePayrollStatus]);
 
@@ -862,8 +866,12 @@ export default function PayrollPage() {
     try {
       await updatePayrollStatus.mutateAsync({ id, status: 'PAID' });
       toast({ title: "To'landi", variant: 'success' });
-    } catch {
-      toast({ title: 'Xatolik', variant: 'destructive' });
+    } catch (error) {
+      toast({
+        title: 'Xatolik',
+        description: getErrorMessage(error, "To'lovni belgilashda xatolik yuz berdi"),
+        variant: 'destructive',
+      });
     }
   }, [updatePayrollStatus]);
 
@@ -879,8 +887,12 @@ export default function PayrollPage() {
       toast({ title: 'Avans yaratildi', variant: 'success' });
       setAdvanceDialogOpen(false);
       advanceForm.reset({ user: '', amount: 0, date: format(new Date(), 'yyyy-MM-dd'), notes: '' });
-    } catch {
-      toast({ title: 'Xatolik', variant: 'destructive' });
+    } catch (error) {
+      toast({
+        title: 'Xatolik',
+        description: getErrorMessage(error, 'Avans yaratishda xatolik yuz berdi'),
+        variant: 'destructive',
+      });
     }
   }, [createAdvance, advanceForm]);
 

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Material, Unit } from '@plastmassa/shared';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, cn, getErrorMessage } from '@/lib/utils';
 import {
   useMaterials,
   useCreateMaterial,
@@ -222,8 +222,8 @@ export default function MaterialsPage() {
         }
         setDialogOpen(false);
         reset(EMPTY_FORM_VALUES);
-      } catch {
-        toast({ title: 'Xatolik', description: 'Amalni bajarishda xatolik yuz berdi', variant: 'destructive' });
+      } catch (error) {
+        toast({ title: 'Xatolik', description: getErrorMessage(error, 'Amalni bajarishda xatolik yuz berdi'), variant: 'destructive' });
       }
     },
     [editingMaterial, createMutation, updateMutation, reset],
@@ -236,8 +236,8 @@ export default function MaterialsPage() {
       toast({ title: 'Muvaffaqiyatli', description: 'Xom-ashyo muvaffaqiyatli o\'chirildi' });
       setDeleteDialogOpen(false);
       setDeletingMaterial(null);
-    } catch {
-      toast({ title: 'Xatolik', description: 'O\'chirishda xatolik yuz berdi', variant: 'destructive' });
+    } catch (error) {
+      toast({ title: 'Xatolik', description: getErrorMessage(error, 'O\'chirishda xatolik yuz berdi'), variant: 'destructive' });
     }
   }, [deletingMaterial, deleteMutation]);
 

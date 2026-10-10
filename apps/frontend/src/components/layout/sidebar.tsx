@@ -23,6 +23,8 @@ import {
   Calculator,
   Truck,
   Settings2,
+  TrendingUp,
+  TrendingDown,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -100,6 +102,8 @@ const navigation: NavigationEntry[] = [
     name: 'Moliya',
     children: [
       { icon: Wallet, name: 'Pul oqimi', path: '/finance', permission: 'finance:read' },
+      { icon: TrendingUp, name: 'Kirim', path: '/finance/kirim', permission: 'finance:read' },
+      { icon: TrendingDown, name: 'Chiqim', path: '/finance/chiqim', permission: 'finance:read' },
     ],
   },
 

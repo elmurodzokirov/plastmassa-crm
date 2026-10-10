@@ -18,7 +18,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import type { Unit, Supplier } from '@plastmassa/shared';
-import { cn, formatCurrency, formatNumber } from '@/lib/utils';
+import { cn, formatCurrency, formatNumber, getErrorMessage } from '@/lib/utils';
 import { useMaterial } from '@/hooks/use-materials';
 import { useUnits } from '@/hooks/use-units';
 import { useSuppliers } from '@/hooks/use-suppliers';
@@ -187,8 +187,8 @@ export default function MaterialDetailPage() {
         toast({ title: 'Muvaffaqiyatli', description: 'Yangi kirim muvaffaqiyatli saqlandi' });
         setDialogOpen(false);
         reset();
-      } catch {
-        toast({ title: 'Xatolik', description: 'Kirimni saqlashda xatolik yuz berdi', variant: 'destructive' });
+      } catch (error) {
+        toast({ title: 'Xatolik', description: getErrorMessage(error, 'Kirimni saqlashda xatolik yuz berdi'), variant: 'destructive' });
       }
     },
     [id, createLotMutation, reset],

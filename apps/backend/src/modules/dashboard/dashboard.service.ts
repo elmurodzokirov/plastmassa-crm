@@ -121,12 +121,51 @@ export class DashboardService {
   }
 
   async getRecentPayments(limit: number = 5) {
-    return this.paymentModel
-      .find()
-      .populate('customer', 'name')
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .exec();
+    // "To'lov" ikki manbadan kelishi mumkin: alohida/buyurtmaga bog'langan
+    // to'lov (Payment) va buyurtma yaratilgandagi boshlang'ich to'lov
+    // (Order.initialPaidAmount) — xuddi finance.service.ts'dagi
+    // "Bugungi kirim va chiqimlar" bilan bir xil mantiq. Ikkalasini
+    // birlashtirib, sana bo'yicha saralab, oxirgi `limit` tasini qaytaramiz.
+    const [standalonePayments, orderIncomes] = await Promise.all([
+      this.paymentModel
+        .find()
+        .populate('customer', 'name')
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .exec(),
+      this.orderModel
+        .find({
+          status: { $ne: 'CANCELLED' },
+          initialPaidAmount: { $gt: 0 },
+        })
+        .populate('customer', 'name')
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .exec(),
+    ]);
+
+    const normalizedPayments = standalonePayments.map((p: any) => ({
+      _id: p._id,
+      customer: p.customer,
+      amount: p.amount,
+      type: p.type,
+      createdAt: p.createdAt,
+    }));
+
+    const normalizedOrderIncomes = orderIncomes.map((o: any) => ({
+      _id: o._id,
+      customer: o.customer,
+      amount: o.initialPaidAmount,
+      type: o.paymentType,
+      createdAt: o.createdAt,
+    }));
+
+    return [...normalizedPayments, ...normalizedOrderIncomes]
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      )
+      .slice(0, limit);
   }
 
   async getMonthlyRevenue(months: number = 6) {

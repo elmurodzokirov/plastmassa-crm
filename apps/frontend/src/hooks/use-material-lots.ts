@@ -1,5 +1,6 @@
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import { materialLotsApi, MaterialLotQuery } from '@/api/material-lots';
+import { invalidateFinanceQueries } from './use-finance';
 
 export function useMaterialLots(params?: MaterialLotQuery) {
   return useQuery({
@@ -31,6 +32,11 @@ export function useCreateMaterialLot() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['material-lots'] });
       queryClient.invalidateQueries({ queryKey: ['materials'] });
+      // A material lot with a supplier + immediate paidAmount creates a
+      // SupplierPayment behind the scenes — reflect it everywhere.
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['supplier-payments'] });
+      invalidateFinanceQueries(queryClient);
     },
   });
 }

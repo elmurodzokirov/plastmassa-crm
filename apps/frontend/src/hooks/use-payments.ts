@@ -1,5 +1,7 @@
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import { paymentsApi, PaymentQuery } from '@/api/payments';
+import { invalidateFinanceQueries } from './use-finance';
+import { invalidateDashboardQueries } from './use-dashboard';
 
 export function usePayments(params?: PaymentQuery) {
   return useQuery({
@@ -24,6 +26,9 @@ export function useCreatePayment() {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['overdueDebts'] });
+      invalidateDashboardQueries(queryClient);
+      invalidateFinanceQueries(queryClient);
     },
   });
 }

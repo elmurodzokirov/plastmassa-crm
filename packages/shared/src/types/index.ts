@@ -271,6 +271,7 @@ export interface Order {
   customer: string | Customer;
   items: OrderItem[];
   totalAmount: number;
+  orderDiscount?: number;
   initialPaidAmount: number;
   paidAmount: number;
   totalCost: number;

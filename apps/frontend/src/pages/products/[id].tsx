@@ -25,7 +25,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import type { Unit, Supplier } from '@plastmassa/shared';
-import { cn, formatCurrency, formatNumber } from '@/lib/utils';
+import { cn, formatCurrency, formatNumber, getErrorMessage } from '@/lib/utils';
 import { useProduct } from '@/hooks/use-products';
 import { useUnits } from '@/hooks/use-units';
 import {
@@ -278,8 +278,8 @@ export default function ProductDetailPage() {
         toast({ title: 'Muvaffaqiyatli', description: 'Yangi kirim muvaffaqiyatli saqlandi' });
         setDialogOpen(false);
         reset();
-      } catch {
-        toast({ title: 'Xatolik', description: 'Kirimni saqlashda xatolik yuz berdi', variant: 'destructive' });
+      } catch (error) {
+        toast({ title: 'Xatolik', description: getErrorMessage(error, 'Kirimni saqlashda xatolik yuz berdi'), variant: 'destructive' });
       }
     },
     [id, createLotMutation, reset],
@@ -341,8 +341,8 @@ export default function ProductDetailPage() {
         });
         toast({ title: 'Muvaffaqiyatli', description: 'Retsept muvaffaqiyatli saqlandi' });
         setRecipeDialogOpen(false);
-      } catch {
-        toast({ title: 'Xatolik', description: 'Retseptni saqlashda xatolik yuz berdi', variant: 'destructive' });
+      } catch (error) {
+        toast({ title: 'Xatolik', description: getErrorMessage(error, 'Retseptni saqlashda xatolik yuz berdi'), variant: 'destructive' });
       }
     },
     [id, upsertRecipeMutation],

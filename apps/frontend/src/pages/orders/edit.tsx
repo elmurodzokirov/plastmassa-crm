@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import type { Customer, Product, Unit } from '@plastmassa/shared';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, getErrorMessage } from '@/lib/utils';
 import { useCustomers } from '@/hooks/use-customers';
 import { useProducts } from '@/hooks/use-products';
 import { useOrder, useUpdateOrder } from '@/hooks/use-orders';
@@ -78,8 +78,8 @@ export default function EditOrderPage(): JSX.Element {
   const debouncedProductSearch = useDebounce(productSearch, 300);
 
   // Payment
-  const [paymentType, setPaymentType] = useState<string>('CASH');
   const [paidAmount, setPaidAmount] = useState<number>(0);
+  const [orderDiscount, setOrderDiscount] = useState<number>(0);
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -135,8 +135,8 @@ export default function EditOrderPage(): JSX.Element {
       setCart(cartItems);
 
       // Set payment info
-      setPaymentType(order.paymentType);
       setPaidAmount(order.paidAmount);
+      setOrderDiscount((order as any).orderDiscount || 0);
       setNotes(order.notes || '');
       if ((order as any).dueDate) {
         const d = new Date((order as any).dueDate);
@@ -152,13 +152,12 @@ export default function EditOrderPage(): JSX.Element {
     [cart],
   );
 
-  // Auto-set paidAmount based on paymentType (only after initialization)
-  useEffect(() => {
-    if (!initialized) return;
-    if (paymentType === 'CASH' || paymentType === 'TRANSFER') {
-      setPaidAmount(cartTotal);
-    }
-  }, [paymentType, cartTotal, initialized]);
+  // Final payable total after the order-level discount
+  const discountedTotal = Math.max(cartTotal - orderDiscount, 0);
+
+  // Payment type is no longer chosen manually — it's derived from the
+  // amount entered: fully covered => CASH, anything less => DEBT.
+  const paymentType = paidAmount >= discountedTotal ? 'CASH' : 'DEBT';
 
   const getUnitName = (unit: string | Unit): string => {
     if (typeof unit === 'string') return unit;
@@ -317,6 +316,7 @@ export default function EditOrderPage(): JSX.Element {
       })),
       paidAmount,
       paymentType,
+      orderDiscount,
       dueDate: paymentType === 'DEBT' && dueDate ? dueDate : undefined,
       notes: notes || undefined,
     };
@@ -328,18 +328,20 @@ export default function EditOrderPage(): JSX.Element {
         description: 'Buyurtma muvaffaqiyatli tahrirlandi',
       });
       navigate(`/orders/${id}`);
-    } catch {
+    } catch (error) {
       toast({
         title: 'Xatolik',
-        description: 'Buyurtmani tahrirlashda xatolik yuz berdi',
+        description: getErrorMessage(error, 'Buyurtmani tahrirlashda xatolik yuz berdi'),
         variant: 'destructive',
       });
     }
-  }, [id, selectedCustomer, cart, cartTotal, paidAmount, paymentType, dueDate, notes, updateOrderMutation, navigate]);
+  }, [id, selectedCustomer, cart, paidAmount, paymentType, orderDiscount, dueDate, notes, updateOrderMutation, navigate]);
 
   const canSubmit = !!selectedCustomer && cart.length > 0;
 
-  const remaining = cartTotal - paidAmount;
+  const remaining = discountedTotal - paidAmount;
+  const isOverpaid = paidAmount > discountedTotal;
+  const isFullyPaid = paidAmount === discountedTotal;
   const wouldExceedDebtLimit =
     selectedCustomer && paymentType === 'DEBT'
       ? selectedCustomer.currentDebt + remaining > selectedCustomer.debtLimit &&
@@ -688,53 +690,66 @@ export default function EditOrderPage(): JSX.Element {
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Jami</span>
               <span className="text-xl font-bold text-foreground">
-                {formatCurrency(cartTotal)}
+                {formatCurrency(discountedTotal)}
               </span>
             </div>
 
-            {/* Payment type + amount */}
-            <div className="flex gap-2">
-              <Select
-                value={paymentType}
-                onValueChange={(value) => setPaymentType(value)}
-              >
-                <SelectTrigger className="h-9 w-[110px] text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CASH">Naqd</SelectItem>
-                  <SelectItem value="TRANSFER">O'tkazma</SelectItem>
-                  <SelectItem value="DEBT">Nasiya</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Discount */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Chegirma</Label>
               <Input
                 type="number"
                 min={0}
                 max={cartTotal}
                 step="any"
-                value={paidAmount}
+                value={orderDiscount || ''}
                 onChange={(e) =>
-                  setPaidAmount(parseFloat(e.target.value) || 0)
+                  setOrderDiscount(parseFloat(e.target.value) || 0)
                 }
-                disabled={
-                  paymentType === 'CASH' || paymentType === 'TRANSFER'
-                }
-                className="h-9 flex-1 text-sm"
-                placeholder="To'langan"
+                className="h-9 text-sm"
+                placeholder="0"
               />
             </div>
 
-            {/* Due date for DEBT */}
-            {paymentType === 'DEBT' && (
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">To'lov muddati</Label>
+            {/* Payment amount + due date — same row */}
+            <div className="flex items-start gap-2">
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs text-muted-foreground">To'lov summasi</Label>
                 <Input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="h-9 text-sm"
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={paidAmount || ''}
+                  onChange={(e) =>
+                    setPaidAmount(parseFloat(e.target.value) || 0)
+                  }
+                  className={cn(
+                    'h-9 text-sm border',
+                    isOverpaid
+                      ? 'bg-amber-500/10 border-amber-500/50 focus-visible:ring-amber-500/40'
+                      : isFullyPaid
+                        ? 'bg-green-500/10 border-green-500/50 focus-visible:ring-green-500/40'
+                        : 'bg-red-500/10 border-red-500/50 focus-visible:ring-red-500/40',
+                  )}
+                  placeholder="To'lanmasa — nasiyaga sotiladi"
                 />
               </div>
+              {paymentType === 'DEBT' && (
+                <div className="w-36 shrink-0 space-y-1">
+                  <Label className="text-xs text-muted-foreground">To'lov muddati</Label>
+                  <Input
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                </div>
+              )}
+            </div>
+            {isOverpaid && (
+              <p className="text-[11px] text-amber-400 -mt-2">
+                To'lov summasiga e'tibor bering — jami summadan oshib ketdi
+              </p>
             )}
 
             {/* Remaining */}

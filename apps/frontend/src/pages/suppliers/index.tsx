@@ -14,7 +14,7 @@ import {
   Scale,
 } from 'lucide-react';
 import type { Supplier } from '@plastmassa/shared';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, getErrorMessage } from '@/lib/utils';
 import {
   useSuppliers,
   useCreateSupplier,
@@ -164,8 +164,8 @@ export default function SuppliersPage() {
       toast({ title: 'Muvaffaqiyatli', description: 'Saldo yangilandi' });
       setBalanceDialogOpen(false);
       setBalanceSupplier(null);
-    } catch {
-      toast({ title: 'Xatolik', description: 'Saldoni yangilashda xatolik yuz berdi', variant: 'destructive' });
+    } catch (error) {
+      toast({ title: 'Xatolik', description: getErrorMessage(error, 'Saldoni yangilashda xatolik yuz berdi'), variant: 'destructive' });
     }
   }, [balanceSupplier, balanceValue, setBalanceMutation]);
 
@@ -188,10 +188,10 @@ export default function SuppliersPage() {
         }
         setDialogOpen(false);
         reset();
-      } catch {
+      } catch (error) {
         toast({
           title: 'Xatolik',
-          description: 'Amalni bajarishda xatolik yuz berdi',
+          description: getErrorMessage(error, 'Amalni bajarishda xatolik yuz berdi'),
           variant: 'destructive',
         });
       }
@@ -209,10 +209,10 @@ export default function SuppliersPage() {
       });
       setDeleteDialogOpen(false);
       setDeletingSupplier(null);
-    } catch {
+    } catch (error) {
       toast({
         title: 'Xatolik',
-        description: "O'chirishda xatolik yuz berdi",
+        description: getErrorMessage(error, "O'chirishda xatolik yuz berdi"),
         variant: 'destructive',
       });
     }
