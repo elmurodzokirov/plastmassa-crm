@@ -16,6 +16,9 @@ export interface User {
   fullName: string;
   username: string;
   password?: string;
+  // Foydalanuvchida parol o'rnatilganmi (faqat Telegram OTP orqali
+  // kirgan va hali parol o'rnatmagan foydalanuvchilarda false bo'ladi).
+  hasPassword?: boolean;
   phone: string;
   role: string | RoleDoc;
   salaryType: 'FIXED' | 'PIECE_RATE';
@@ -59,6 +62,11 @@ export interface SetupSuperAdminDto {
   username: string;
   phone: string;
   password: string;
+}
+
+export interface ChangePasswordDto {
+  currentPassword?: string;
+  newPassword: string;
 }
 
 export interface TokenPayload {

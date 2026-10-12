@@ -62,6 +62,9 @@ export const suppliersApi = {
   getPayments: (params?: SupplierPaymentQuery) =>
     client.get<PaginatedResponse<SupplierPayment>>('/suppliers/payments', { params }).then((r) => r.data),
 
+  cancelPayment: (id: string, reason: string) =>
+    client.patch<SupplierPayment>(`/suppliers/payments/${id}/cancel`, { reason }).then((r) => r.data),
+
   createPayment: (data: SupplierPaymentCreateInput) =>
     client.post<SupplierPayment>('/suppliers/payments', data).then((r) => r.data),
 };

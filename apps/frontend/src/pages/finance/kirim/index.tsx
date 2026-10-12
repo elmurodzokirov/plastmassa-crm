@@ -5,9 +5,9 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
-import { Plus } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
-import { usePayments, useCreatePayment } from '@/hooks/use-payments';
+import { Plus, Ban } from 'lucide-react';
+import { cn, formatCurrency, getErrorMessage } from '@/lib/utils';
+import { usePayments, useCreatePayment, useCancelPayment } from '@/hooks/use-payments';
 import { useCustomers } from '@/hooks/use-customers';
 import { useOrders } from '@/hooks/use-orders';
 import { toast } from '@/components/ui/use-toast';
@@ -43,6 +43,8 @@ import {
 } from '@/components/ui/select';
 import { DataTableWrapper } from '@/components/shared/data-table';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
+import { CashOperationsPanel } from '@/components/finance/cash-operations-panel';
+import { CancelReasonDialog } from '@/components/finance/cancel-reason-dialog';
 
 // ── Constants ─────────────────────────────────────────────────────────
 
@@ -75,6 +77,7 @@ export default function KirimPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('customer-payments');
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentToCancel, setPaymentToCancel] = useState<any | null>(null);
 
   // ── Queries ───────────────────────────────────────────────────────
 
@@ -91,6 +94,7 @@ export default function KirimPage() {
   });
 
   const createPayment = useCreatePayment();
+  const cancelPayment = useCancelPayment();
 
   const payments = paymentsData?.items || [];
   const customers = customersData?.items || [];
@@ -137,6 +141,28 @@ export default function KirimPage() {
     [createPayment],
   );
 
+  const handleCancelPayment = useCallback(
+    async (reason: string) => {
+      if (!paymentToCancel) return;
+      try {
+        await cancelPayment.mutateAsync({ id: paymentToCancel._id, reason });
+        toast({
+          title: 'Bekor qilindi',
+          description: "To'lov bekor qilindi, mijoz qarzi qaytarildi",
+          variant: 'success',
+        });
+        setPaymentToCancel(null);
+      } catch (err) {
+        toast({
+          title: 'Xatolik',
+          description: getErrorMessage(err, "To'lovni bekor qilishda xatolik yuz berdi"),
+          variant: 'destructive',
+        });
+      }
+    },
+    [cancelPayment, paymentToCancel],
+  );
+
   // ── Render ────────────────────────────────────────────────────────
 
   return (
@@ -158,6 +184,7 @@ export default function KirimPage() {
           <TabsList>
             <TabsTrigger value="customer-payments">Mijozdan to'lovlar</TabsTrigger>
             <TabsTrigger value="order-income">Buyurtma to'lovlari</TabsTrigger>
+            <TabsTrigger value="other-income">Boshqa kirimlar</TabsTrigger>
           </TabsList>
         </motion.div>
 
@@ -186,21 +213,31 @@ export default function KirimPage() {
                     <TableHead className="min-w-[140px]">Sana</TableHead>
                     <TableHead className="min-w-[100px]">To'lov turi</TableHead>
                     <TableHead className="min-w-[160px]">Izoh</TableHead>
+                    <TableHead className="w-[60px]" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {payments.map((p: any) => {
                     const customer = typeof p.customer === 'object' ? p.customer : null;
                     const order = typeof p.order === 'object' ? p.order : null;
+                    const cancelled = p.status === 'CANCELLED';
                     return (
                       <TableRow
                         key={p._id}
-                        className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                        className={cn(
+                          'border-b border-border/30 hover:bg-accent/50 transition-colors',
+                          cancelled && 'opacity-60',
+                        )}
                       >
                         <TableCell>
-                          <span className="font-medium text-foreground">
+                          <span className={cn('font-medium text-foreground', cancelled && 'line-through')}>
                             {customer?.name || '---'}
                           </span>
+                          {cancelled && (
+                            <Badge variant="destructive" className="ml-2">
+                              Bekor qilingan
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell>
                           {order ? (
@@ -209,7 +246,9 @@ export default function KirimPage() {
                             <Badge variant="secondary">Alohida to'lov</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="font-semibold text-green-400">
+                        <TableCell
+                          className={cn('font-semibold text-green-400', cancelled && 'line-through')}
+                        >
                           {formatCurrency(p.amount || 0)}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
@@ -221,7 +260,20 @@ export default function KirimPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          {p.notes || '---'}
+                          {cancelled && p.cancelReason ? `Sabab: ${p.cancelReason}` : p.notes || '---'}
+                        </TableCell>
+                        <TableCell>
+                          {!cancelled && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="To'lovni bekor qilish"
+                              onClick={() => setPaymentToCancel(p)}
+                              className="text-muted-foreground hover:text-red-400"
+                            >
+                              <Ban className="h-4 w-4" />
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
@@ -286,7 +338,26 @@ export default function KirimPage() {
             </div>
           </DataTableWrapper>
         </TabsContent>
+
+        {/* ── TAB 3: Boshqa kirimlar (opening balance, owner top-up, loans...) ── */}
+        <TabsContent value="other-income" className="space-y-6">
+          <CashOperationsPanel
+            direction="IN"
+            addLabel="Yangi kirim"
+            emptyTitle="Boshqa kirimlar topilmadi"
+            emptyDescription="Boshlang'ich qoldiq, egasi qo'ygan pul yoki kredit kabi kirimlar shu yerda ko'rinadi"
+          />
+        </TabsContent>
       </Tabs>
+
+      <CancelReasonDialog
+        open={!!paymentToCancel}
+        onOpenChange={(o) => !o && setPaymentToCancel(null)}
+        title="To'lovni bekor qilish"
+        description="To'lov o'chirilmaydi: bekor qilingan deb belgilanadi, mijoz qarzi (va buyurtma to'langan summasi) qaytariladi, kassa qoldig'idan chiqariladi."
+        isPending={cancelPayment.isPending}
+        onConfirm={handleCancelPayment}
+      />
 
       {/* ── Create Payment Dialog ────────────────────────────────────────── */}
       <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
@@ -337,7 +408,9 @@ export default function KirimPage() {
               />
               {selectedCustomer && (
                 <p className="text-xs text-muted-foreground">
-                  Joriy qarz: {formatCurrency(Math.max(selectedCustomer.currentDebt || 0, 0))}
+                  {(selectedCustomer.currentDebt || 0) > 0
+                    ? `Joriy qarz: ${formatCurrency(selectedCustomer.currentDebt)}. Ortiqcha summa mijozning haqdorligiga o'tadi.`
+                    : "Mijozning qarzi yo'q — to'lov avans (haqdorlik) sifatida yoziladi."}
                 </p>
               )}
               {paymentForm.formState.errors.amount && (

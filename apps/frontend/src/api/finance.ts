@@ -5,6 +5,8 @@ import type { PaginatedResponse } from '@plastmassa/shared';
 
 export interface ExpenseData {
   _id: string;
+  status?: 'ACTIVE' | 'CANCELLED';
+  cancelReason?: string;
   category: string;
   description: string;
   amount: number;
@@ -48,10 +50,18 @@ export interface CreditorData {
   totalDebt: number;
 }
 
+export type CashAccount = 'CASH' | 'BANK' | 'CARD';
+export type AccountBalances = Record<CashAccount, number>;
+
 export interface CashFlowData {
   totalIncome: number;
   totalExpense: number;
   netProfit: number;
+  /** Total money (all accounts) at the start of the period. */
+  openingBalance?: number;
+  /** Total money (all accounts) at the end of the period. */
+  closingBalance?: number;
+  accountBalances?: AccountBalances;
   transactions?: any[];
 }
 
@@ -68,7 +78,9 @@ export interface FinanceSummary {
   netProfit: number;
   totalDebt: number;
   totalCredit: number;
+  /** Real money in the register right now (all history, all accounts). */
   cashOnHand: number;
+  accountBalances?: AccountBalances;
 }
 
 export interface ProfitAndLossData {
@@ -80,14 +92,59 @@ export interface ProfitAndLossData {
   expensesByCategory: { category: string; total: number; count: number }[];
 }
 
-export type FinanceTransactionType = 'ORDER_INCOME' | 'PAYMENT' | 'EXPENSE' | 'SUPPLIER_PAYMENT' | 'RETURN_REFUND';
+export type FinanceTransactionType =
+  | 'ORDER_INCOME'
+  | 'PAYMENT'
+  | 'EXPENSE'
+  | 'SUPPLIER_PAYMENT'
+  | 'RETURN_REFUND'
+  | 'CASH_OPERATION';
+
+export type CashOperationKind =
+  | 'OPENING'
+  | 'CAPITAL_IN'
+  | 'LOAN_IN'
+  | 'OTHER_IN'
+  | 'WITHDRAWAL'
+  | 'LOAN_REPAYMENT'
+  | 'OTHER_OUT';
+
+export interface CashOperationData {
+  _id: string;
+  kind: CashOperationKind;
+  direction: 'IN' | 'OUT';
+  account: CashAccount;
+  amount: number;
+  date: string;
+  notes?: string;
+  status?: 'ACTIVE' | 'CANCELLED';
+  cancelReason?: string;
+  cancelledAt?: string;
+  createdBy?: any;
+  createdAt: string;
+}
+
+export interface CashOperationInput {
+  kind: CashOperationKind;
+  account: CashAccount;
+  amount: number;
+  date: string;
+  notes?: string;
+}
 
 export interface FinanceTransaction {
   _id: string;
   type: FinanceTransactionType;
   direction: 'IN' | 'OUT';
+  /** Which till the money moved through: Naqd / Bank / Karta. */
+  account?: CashAccount;
   amount: number;
   date: string;
+  /** Cancelled entries stay visible (struck through) but don't move the balance. */
+  cancelled?: boolean;
+  cancelReason?: string;
+  cancelledAt?: string;
+  isOpening?: boolean;
   title: string;
   subtitle?: string;
   detail: {
@@ -105,6 +162,7 @@ export interface FinanceTransaction {
     notes?: string;
     reason?: string;
     returnTotal?: number;
+    kind?: CashOperationKind;
   };
   /** Running cash balance at this point in the feed — only set when returned
    *  in chronological (oldest-first) order, i.e. by getTransactions. */
@@ -126,6 +184,7 @@ export interface TransactionsLedgerData {
   items: FinanceTransaction[];
   totalIncome: number;
   totalExpense: number;
+  openingBalance?: number;
   closingBalance: number;
 }
 
@@ -143,6 +202,8 @@ export const financeApi = {
     client.put<ExpenseData>(`/expenses/${id}`, data).then((r) => r.data),
   deleteExpense: (id: string) =>
     client.delete(`/expenses/${id}`).then((r) => r.data),
+  cancelExpense: (id: string, reason: string) =>
+    client.patch(`/expenses/${id}/cancel`, { reason }).then((r) => r.data),
   getExpenseStats: (params?: { dateFrom?: string; dateTo?: string }) =>
     client.get<ExpenseStats>('/expenses/stats', { params }).then((r) => r.data),
 
@@ -159,6 +220,14 @@ export const financeApi = {
     client.get<TodayTransactionsData>('/finance/transactions/today').then((r) => r.data),
   getTransactions: (params: TransactionsLedgerParams) =>
     client.get<TransactionsLedgerData>('/finance/transactions', { params }).then((r) => r.data),
+  getCashOperations: (direction?: 'IN' | 'OUT') =>
+    client
+      .get<{ items: CashOperationData[] }>('/finance/cash-operations', { params: { direction } })
+      .then((r) => r.data),
+  createCashOperation: (data: CashOperationInput) =>
+    client.post<CashOperationData>('/finance/cash-operations', data).then((r) => r.data),
+  cancelCashOperation: (id: string, reason: string) =>
+    client.patch(`/finance/cash-operations/${id}/cancel`, { reason }).then((r) => r.data),
   getFinanceSummary: () =>
     client.get<FinanceSummary>('/finance/summary').then((r) => r.data),
   getProfitAndLoss: (params: { dateFrom?: string; dateTo?: string }) =>

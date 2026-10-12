@@ -1,5 +1,11 @@
 import { useQueryClient, useQuery, useMutation, QueryClient } from '@tanstack/react-query';
-import { financeApi, ExpenseQuery, ExpenseData, TransactionsLedgerParams } from '@/api/finance';
+import {
+  financeApi,
+  ExpenseQuery,
+  ExpenseData,
+  TransactionsLedgerParams,
+  CashOperationInput,
+} from '@/api/finance';
 
 /**
  * Every mutation that moves money (order payments, supplier payments,
@@ -38,6 +44,50 @@ export function useCreateExpense() {
     mutationFn: (data: Partial<ExpenseData>) => financeApi.createExpense(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      invalidateFinanceQueries(queryClient);
+    },
+  });
+}
+
+export function useCancelExpense() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      financeApi.cancelExpense(id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      invalidateFinanceQueries(queryClient);
+    },
+  });
+}
+
+// ── Cash operations (opening balance, owner top-up/withdrawal, loans...) ──
+
+export function useCashOperations(direction?: 'IN' | 'OUT') {
+  return useQuery({
+    queryKey: ['cashOperations', direction],
+    queryFn: () => financeApi.getCashOperations(direction),
+  });
+}
+
+export function useCreateCashOperation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CashOperationInput) => financeApi.createCashOperation(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cashOperations'] });
+      invalidateFinanceQueries(queryClient);
+    },
+  });
+}
+
+export function useCancelCashOperation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      financeApi.cancelCashOperation(id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cashOperations'] });
       invalidateFinanceQueries(queryClient);
     },
   });

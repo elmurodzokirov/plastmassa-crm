@@ -80,6 +80,19 @@ export function useSupplierPayments(params?: SupplierPaymentQuery) {
   });
 }
 
+export function useCancelSupplierPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      suppliersApi.cancelPayment(id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['supplier-payments'] });
+      invalidateFinanceQueries(queryClient);
+    },
+  });
+}
+
 export function useCreateSupplierPayment() {
   const queryClient = useQueryClient();
   return useMutation({

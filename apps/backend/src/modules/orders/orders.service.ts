@@ -755,7 +755,12 @@ export class OrdersService {
   private async getOrderPaymentTotal(orderId: string): Promise<number> {
     const result = await this.paymentModel
       .aggregate([
-        { $match: { order: new Types.ObjectId(orderId) } },
+        {
+          $match: {
+            order: new Types.ObjectId(orderId),
+            status: { $ne: 'CANCELLED' },
+          },
+        },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ])
       .exec();

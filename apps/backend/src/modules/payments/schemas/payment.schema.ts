@@ -23,6 +23,18 @@ export class Payment {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   createdBy: Types.ObjectId;
 
+  @Prop({ enum: ['ACTIVE', 'CANCELLED'], default: 'ACTIVE' })
+  status: string;
+
+  @Prop()
+  cancelledAt: Date;
+
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  cancelledBy: Types.ObjectId;
+
+  @Prop({ trim: true })
+  cancelReason: string;
+
   createdAt: Date;
   updatedAt: Date;
 }

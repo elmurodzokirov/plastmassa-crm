@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import {
   LayoutDashboard,
   Users,
@@ -25,13 +28,74 @@ import {
   Settings2,
   TrendingUp,
   TrendingDown,
+  Sun,
+  Moon,
+  Monitor,
+  LogOut,
+  KeyRound,
   type LucideIcon,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, getInitials } from '@/lib/utils';
 import { useUIStore } from '@/stores/ui.store';
 import { usePermissions } from '@/hooks/use-permissions';
+import { useAuthStore } from '@/stores/auth.store';
+import { useChangePassword } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+
+// ── Change password form ────────────────────────────────────────────────
+// "Joriy parol" faqat foydalanuvchida parol allaqachon mavjud bo'lsa talab
+// qilinadi. Telegram OTP orqali kirib, hali parol o'rnatmagan foydalanuvchi
+// uchun bu birinchi marta parol o'rnatish bo'ladi — joriy parol so'ralmaydi.
+function buildChangePasswordSchema(requireCurrentPassword: boolean) {
+  return z
+    .object({
+      currentPassword: z.string().optional(),
+      newPassword: z.string().min(6, "Yangi parol kamida 6 belgidan iborat bo'lishi kerak"),
+      confirmPassword: z.string().min(1, 'Yangi parolni tasdiqlang'),
+    })
+    .superRefine((data, ctx) => {
+      if (requireCurrentPassword && !data.currentPassword) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Joriy parolni kiriting',
+          path: ['currentPassword'],
+        });
+      }
+      if (data.newPassword !== data.confirmPassword) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Parollar mos kelmadi',
+          path: ['confirmPassword'],
+        });
+      }
+    });
+}
+
+type ChangePasswordFormData = {
+  currentPassword?: string;
+  newPassword: string;
+  confirmPassword: string;
+};
 
 interface NavItem {
   icon: LucideIcon;
@@ -122,9 +186,45 @@ const navigation: NavigationEntry[] = [
 
 export function Sidebar() {
   const location = useLocation();
-  const { sidebarOpen, sidebarCollapsed, setSidebarOpen, toggleCollapse } = useUIStore();
+  const navigate = useNavigate();
+  const { sidebarOpen, sidebarCollapsed, setSidebarOpen, toggleCollapse, theme, setTheme } = useUIStore();
   const { can } = usePermissions();
+  const { user, logout } = useAuthStore();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  // `hasPassword` eski (ushbu o'zgarishdan oldingi) saqlangan sessiyalarda
+  // mavjud bo'lmasligi mumkin — bunday holda xavfsiz tomonga o'tib, joriy
+  // parol talab qilinadi (oldingi xatti-harakat).
+  const hasPassword = user?.hasPassword !== false;
+
+  const changePassword = useChangePassword();
+  const changePasswordForm = useForm<ChangePasswordFormData>({
+    resolver: zodResolver(buildChangePasswordSchema(hasPassword)),
+    defaultValues: { currentPassword: '', newPassword: '', confirmPassword: '' },
+  });
+
+  const openChangePasswordDialog = () => {
+    changePasswordForm.reset({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    setChangePasswordOpen(true);
+  };
+
+  const handleChangePassword = async (data: ChangePasswordFormData) => {
+    try {
+      await changePassword.mutateAsync({
+        currentPassword: data.currentPassword,
+        newPassword: data.newPassword,
+      });
+      setChangePasswordOpen(false);
+    } catch {
+      // xatolik haqida toast useChangePassword ichida ko'rsatiladi
+    }
+  };
 
   // Filter navigation items by permission
   const filteredNavigation = navigation
@@ -381,6 +481,131 @@ export function Sidebar() {
           isNavGroup(entry) ? renderNavGroup(entry) : renderNavItem(entry),
         )}
       </nav>
+
+      {/* User & theme footer */}
+      <div className="border-t border-border/50 p-2">
+        {!sidebarCollapsed ? (
+          <div className="flex items-center gap-1">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1.5 text-sm hover:bg-accent transition-colors">
+                  <Avatar className="h-7 w-7 shrink-0">
+                    <AvatarFallback className="bg-indigo-500/20 text-indigo-300 text-xs font-medium">
+                      {user ? getInitials(user.fullName) : '??'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="min-w-0 flex-1 truncate text-left text-sm font-medium text-foreground">
+                    {user?.fullName || 'Foydalanuvchi'}
+                  </span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-52" align="start" side="top" forceMount>
+                <DropdownMenuLabel className="py-1 text-xs font-normal text-muted-foreground">
+                  {user?.role ? (typeof user.role === 'object' ? user.role.name : user.role) : 'Foydalanuvchi'}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={openChangePasswordDialog}>
+                  <KeyRound className="mr-2 h-4 w-4" />
+                  <span>Parolni o'zgartirish</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="text-red-400 focus:text-red-400">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Chiqish</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <div className="flex items-center gap-0.5 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn('h-7 w-7 rounded-lg', theme === 'light' && 'bg-accent')}
+                onClick={() => setTheme('light')}
+              >
+                <Sun className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn('h-7 w-7 rounded-lg', theme === 'dark' && 'bg-accent')}
+                onClick={() => setTheme('dark')}
+              >
+                <Moon className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn('h-7 w-7 rounded-lg', theme === 'system' && 'bg-accent')}
+                onClick={() => setTheme('system')}
+              >
+                <Monitor className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="rounded-full">
+                  <Avatar className="h-7 w-7">
+                    <AvatarFallback className="bg-indigo-500/20 text-indigo-300 text-xs font-medium">
+                      {user ? getInitials(user.fullName) : '??'}
+                    </AvatarFallback>
+                  </Avatar>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-52" align="start" side="right" forceMount>
+                <DropdownMenuLabel className="py-1 text-xs font-normal text-muted-foreground">
+                  {user?.fullName || 'Foydalanuvchi'}
+                  {user?.role && (
+                    <span className="block text-muted-foreground/80">
+                      {typeof user.role === 'object' ? user.role.name : user.role}
+                    </span>
+                  )}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={openChangePasswordDialog}>
+                  <KeyRound className="mr-2 h-4 w-4" />
+                  <span>Parolni o'zgartirish</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="text-red-400 focus:text-red-400">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Chiqish</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <div className="flex flex-col items-center gap-1 rounded-xl border border-border/50 bg-muted/50 p-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn('h-7 w-7 rounded-lg', theme === 'light' && 'bg-background shadow-sm')}
+                onClick={() => setTheme('light')}
+              >
+                <Sun className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn('h-7 w-7 rounded-lg', theme === 'dark' && 'bg-background shadow-sm')}
+                onClick={() => setTheme('dark')}
+              >
+                <Moon className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn('h-7 w-7 rounded-lg', theme === 'system' && 'bg-background shadow-sm')}
+                onClick={() => setTheme('system')}
+              >
+                <Monitor className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 
@@ -420,6 +645,87 @@ export function Sidebar() {
           </>
         )}
       </AnimatePresence>
+
+      {/* Change password dialog */}
+      <Dialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{hasPassword ? "Parolni o'zgartirish" : 'Parol o\'rnatish'}</DialogTitle>
+            <DialogDescription>
+              {hasPassword
+                ? 'Joriy parolingizni va yangi parolingizni kiriting.'
+                : 'Tizimga login va parol bilan kirish uchun parol o\'rnating.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg bg-muted/50 px-3 py-2 text-sm">
+            <span className="text-muted-foreground">Login: </span>
+            <span className="font-medium text-foreground">{user?.username || '—'}</span>
+          </div>
+
+          <form
+            onSubmit={changePasswordForm.handleSubmit(handleChangePassword)}
+            className="space-y-4"
+          >
+            {hasPassword && (
+              <div className="space-y-2">
+                <Label htmlFor="currentPassword">Joriy parol</Label>
+                <Input
+                  id="currentPassword"
+                  type="password"
+                  autoComplete="current-password"
+                  {...changePasswordForm.register('currentPassword')}
+                />
+                {changePasswordForm.formState.errors.currentPassword && (
+                  <p className="text-xs text-red-400">
+                    {changePasswordForm.formState.errors.currentPassword.message}
+                  </p>
+                )}
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="newPassword">Yangi parol</Label>
+              <Input
+                id="newPassword"
+                type="password"
+                autoComplete="new-password"
+                {...changePasswordForm.register('newPassword')}
+              />
+              {changePasswordForm.formState.errors.newPassword && (
+                <p className="text-xs text-red-400">
+                  {changePasswordForm.formState.errors.newPassword.message}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Yangi parolni tasdiqlang</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                autoComplete="new-password"
+                {...changePasswordForm.register('confirmPassword')}
+              />
+              {changePasswordForm.formState.errors.confirmPassword && (
+                <p className="text-xs text-red-400">
+                  {changePasswordForm.formState.errors.confirmPassword.message}
+                </p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setChangePasswordOpen(false)}
+              >
+                Bekor qilish
+              </Button>
+              <Button type="submit" disabled={changePassword.isPending}>
+                {changePassword.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

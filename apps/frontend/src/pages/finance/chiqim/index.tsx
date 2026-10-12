@@ -4,18 +4,19 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
-import { Plus, Pencil, Trash2, Banknote } from 'lucide-react';
-import { cn, formatCurrency } from '@/lib/utils';
+import { Plus, Pencil, Ban, Banknote } from 'lucide-react';
+import { cn, formatCurrency, getErrorMessage } from '@/lib/utils';
 import {
   useExpenses,
   useCreateExpense,
   useUpdateExpense,
-  useDeleteExpense,
+  useCancelExpense,
 } from '@/hooks/use-finance';
 import {
   useSupplierCreditors,
   useSupplierPayments,
   useCreateSupplierPayment,
+  useCancelSupplierPayment,
 } from '@/hooks/use-suppliers';
 import { toast } from '@/components/ui/use-toast';
 
@@ -50,6 +51,8 @@ import {
 } from '@/components/ui/select';
 import { DataTableWrapper } from '@/components/shared/data-table';
 import { LoadingSpinner } from '@/components/shared/loading-spinner';
+import { CashOperationsPanel } from '@/components/finance/cash-operations-panel';
+import { CancelReasonDialog } from '@/components/finance/cancel-reason-dialog';
 
 // ── Constants ─────────────────────────────────────────────────────────
 
@@ -153,7 +156,9 @@ export default function ChiqimPage() {
 
   const createExpense = useCreateExpense();
   const updateExpense = useUpdateExpense();
-  const deleteExpense = useDeleteExpense();
+  const cancelExpense = useCancelExpense();
+  const cancelSupplierPayment = useCancelSupplierPayment();
+  const [supplierPaymentToCancel, setSupplierPaymentToCancel] = useState<any | null>(null);
   const createSupplierPayment = useCreateSupplierPayment();
 
   // ── Derived data ──────────────────────────────────────────────────
@@ -241,25 +246,50 @@ export default function ChiqimPage() {
     setDeleteDialogOpen(true);
   }, []);
 
-  const handleDeleteExpense = useCallback(async () => {
-    if (!deletingExpenseId) return;
-    try {
-      await deleteExpense.mutateAsync(deletingExpenseId);
-      toast({
-        title: 'Muvaffaqiyatli',
-        description: "Xarajat o'chirildi",
-        variant: 'success',
-      });
-      setDeleteDialogOpen(false);
-      setDeletingExpenseId(null);
-    } catch {
-      toast({
-        title: 'Xatolik',
-        description: "Xarajatni o'chirishda xatolik yuz berdi",
-        variant: 'destructive',
-      });
-    }
-  }, [deletingExpenseId, deleteExpense]);
+  const handleDeleteExpense = useCallback(
+    async (reason: string) => {
+      if (!deletingExpenseId) return;
+      try {
+        await cancelExpense.mutateAsync({ id: deletingExpenseId, reason });
+        toast({
+          title: 'Bekor qilindi',
+          description: 'Xarajat bekor qilindi',
+          variant: 'success',
+        });
+        setDeleteDialogOpen(false);
+        setDeletingExpenseId(null);
+      } catch (err) {
+        toast({
+          title: 'Xatolik',
+          description: getErrorMessage(err, 'Xarajatni bekor qilishda xatolik yuz berdi'),
+          variant: 'destructive',
+        });
+      }
+    },
+    [deletingExpenseId, cancelExpense],
+  );
+
+  const handleCancelSupplierPayment = useCallback(
+    async (reason: string) => {
+      if (!supplierPaymentToCancel) return;
+      try {
+        await cancelSupplierPayment.mutateAsync({ id: supplierPaymentToCancel._id, reason });
+        toast({
+          title: 'Bekor qilindi',
+          description: "To'lov bekor qilindi, yetkazib beruvchi qarzi qaytarildi",
+          variant: 'success',
+        });
+        setSupplierPaymentToCancel(null);
+      } catch (err) {
+        toast({
+          title: 'Xatolik',
+          description: getErrorMessage(err, "To'lovni bekor qilishda xatolik yuz berdi"),
+          variant: 'destructive',
+        });
+      }
+    },
+    [supplierPaymentToCancel, cancelSupplierPayment],
+  );
 
   // ── Supplier payment form ─────────────────────────────────────────
 
@@ -319,6 +349,7 @@ export default function ChiqimPage() {
           <TabsList>
             <TabsTrigger value="expenses">Xarajatlar</TabsTrigger>
             <TabsTrigger value="supplier-payments">Yetkazib beruvchiga to'lovlar</TabsTrigger>
+            <TabsTrigger value="withdrawals">Pul yechish</TabsTrigger>
           </TabsList>
         </motion.div>
 
@@ -411,10 +442,15 @@ export default function ChiqimPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {expenses.map((expense: any) => (
+                  {expenses.map((expense: any) => {
+                    const cancelled = expense.status === 'CANCELLED';
+                    return (
                     <TableRow
                       key={expense._id}
-                      className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                      className={cn(
+                        'border-b border-border/30 hover:bg-accent/50 transition-colors',
+                        cancelled && 'opacity-60',
+                      )}
                     >
                       <TableCell>
                         <Badge
@@ -427,11 +463,16 @@ export default function ChiqimPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <span className="font-medium text-foreground">
+                        <span className={cn('font-medium text-foreground', cancelled && 'line-through')}>
                           {expense.description || '---'}
                         </span>
+                        {cancelled && (
+                          <Badge variant="destructive" className="ml-2" title={expense.cancelReason}>
+                            Bekor qilingan
+                          </Badge>
+                        )}
                       </TableCell>
-                      <TableCell className="font-semibold text-red-400">
+                      <TableCell className={cn('font-semibold text-red-400', cancelled && 'line-through')}>
                         {formatCurrency(expense.amount || 0)}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
@@ -445,6 +486,7 @@ export default function ChiqimPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
+                        {!cancelled && (
                         <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
@@ -458,14 +500,17 @@ export default function ChiqimPage() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                            title="Bekor qilish"
                             onClick={() => openDeleteDialog(expense._id)}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Ban className="h-3.5 w-3.5" />
                           </Button>
                         </div>
+                        )}
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -496,22 +541,32 @@ export default function ChiqimPage() {
                     <TableHead className="min-w-[140px]">Sana</TableHead>
                     <TableHead className="min-w-[100px]">To'lov turi</TableHead>
                     <TableHead className="min-w-[160px]">Izoh</TableHead>
+                    <TableHead className="w-[60px]" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {supplierPayments.map((p: any) => {
                     const supplier = typeof p.supplier === 'object' ? p.supplier : null;
+                    const cancelled = p.status === 'CANCELLED';
                     return (
                       <TableRow
                         key={p._id}
-                        className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                        className={cn(
+                          'border-b border-border/30 hover:bg-accent/50 transition-colors',
+                          cancelled && 'opacity-60',
+                        )}
                       >
                         <TableCell>
-                          <span className="font-medium text-foreground">
+                          <span className={cn('font-medium text-foreground', cancelled && 'line-through')}>
                             {supplier?.name || '---'}
                           </span>
+                          {cancelled && (
+                            <Badge variant="destructive" className="ml-2">
+                              Bekor qilingan
+                            </Badge>
+                          )}
                         </TableCell>
-                        <TableCell className="font-semibold text-red-400">
+                        <TableCell className={cn('font-semibold text-red-400', cancelled && 'line-through')}>
                           {formatCurrency(p.amount || 0)}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
@@ -523,7 +578,20 @@ export default function ChiqimPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          {p.notes || '---'}
+                          {cancelled && p.cancelReason ? `Sabab: ${p.cancelReason}` : p.notes || '---'}
+                        </TableCell>
+                        <TableCell>
+                          {!cancelled && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="To'lovni bekor qilish"
+                              onClick={() => setSupplierPaymentToCancel(p)}
+                              className="h-7 w-7 text-muted-foreground hover:text-red-400"
+                            >
+                              <Ban className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
@@ -533,7 +601,25 @@ export default function ChiqimPage() {
             </div>
           </DataTableWrapper>
         </TabsContent>
+
+        <TabsContent value="withdrawals" className="space-y-6">
+          <CashOperationsPanel
+            direction="OUT"
+            addLabel="Pul yechish"
+            emptyTitle="Pul yechishlar topilmadi"
+            emptyDescription="Egasi olgan pul, kreditni qaytarish kabi chiqimlar shu yerda ko'rinadi"
+          />
+        </TabsContent>
       </Tabs>
+
+      <CancelReasonDialog
+        open={!!supplierPaymentToCancel}
+        onOpenChange={(o) => !o && setSupplierPaymentToCancel(null)}
+        title="To'lovni bekor qilish"
+        description="To'lov o'chirilmaydi: bekor qilingan deb belgilanadi, yetkazib beruvchi qarzi qaytariladi."
+        isPending={cancelSupplierPayment.isPending}
+        onConfirm={handleCancelSupplierPayment}
+      />
 
       {/* ── Create/Edit Expense Dialog ──────────────────────────────────── */}
       <Dialog open={expenseDialogOpen} onOpenChange={setExpenseDialogOpen}>
@@ -793,40 +879,14 @@ export default function ChiqimPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Delete Confirmation Dialog ──────────────────────────────────── */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Xarajatni o'chirish</DialogTitle>
-            <DialogDescription>
-              Bu xarajatni o'chirishni xohlaysizmi? Bu amalni qaytarib bo'lmaydi.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              onClick={() => setDeleteDialogOpen(false)}
-              disabled={deleteExpense.isPending}
-              className="rounded-xl"
-            >
-              Bekor qilish
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteExpense}
-              disabled={deleteExpense.isPending}
-              className="gap-2 rounded-xl"
-            >
-              {deleteExpense.isPending ? (
-                <LoadingSpinner size="sm" className="h-4 w-4" />
-              ) : (
-                <Trash2 className="h-4 w-4" />
-              )}
-              O'chirish
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CancelReasonDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Xarajatni bekor qilish"
+        description="Xarajat o'chirilmaydi: bekor qilingan deb belgilanadi va hisobotlardan chiqariladi."
+        isPending={cancelExpense.isPending}
+        onConfirm={handleDeleteExpense}
+      />
     </div>
   );
 }

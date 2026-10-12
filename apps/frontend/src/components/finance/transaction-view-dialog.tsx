@@ -25,6 +25,13 @@ const TYPE_LABEL: Record<FinanceTransaction['type'], string> = {
   EXPENSE: 'Xarajat',
   SUPPLIER_PAYMENT: "Yetkazib beruvchiga to'lov",
   RETURN_REFUND: "Mijozga qaytarilgan pul",
+  CASH_OPERATION: 'Kassa operatsiyasi',
+};
+
+const ACCOUNT_LABEL: Record<string, string> = {
+  CASH: 'Naqd',
+  BANK: 'Bank',
+  CARD: 'Karta',
 };
 
 const PAYMENT_TYPE_LABEL: Record<string, string> = {
@@ -69,7 +76,21 @@ export function TransactionViewDialog({ open, onOpenChange, transaction }: Trans
           </DialogDescription>
         </DialogHeader>
 
+        {transaction.cancelled && (
+          <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            Bu yozuv bekor qilingan va kassa qoldig'iga ta'sir qilmaydi.
+            {transaction.cancelReason && <span className="block mt-1">Sabab: {transaction.cancelReason}</span>}
+          </div>
+        )}
+
         <div className="rounded-xl border border-border/60 px-4 py-1">
+          <Field label="Hisob" value={transaction.account ? ACCOUNT_LABEL[transaction.account] : undefined} />
+          {type === 'CASH_OPERATION' && (
+            <>
+              <Field label="Operatsiya" value={transaction.title} />
+              <Field label="Izoh" value={detail.notes} />
+            </>
+          )}
           {type === 'ORDER_INCOME' && (
             <>
               <Field label="Buyurtma raqami" value={detail.orderNumber} />

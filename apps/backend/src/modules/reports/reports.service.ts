@@ -443,7 +443,7 @@ export class ReportsService {
         .sort({ createdAt: 1 })
         .exec(),
       this.supplierPaymentModel
-        .find({ supplier: supplierId })
+        .find({ supplier: supplierId, status: { $ne: 'CANCELLED' } })
         .sort({ createdAt: 1 })
         .exec(),
     ]);

@@ -33,6 +33,22 @@ export function useCreatePayment() {
   });
 }
 
+export function useCancelPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      paymentsApi.cancel(id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['overdueDebts'] });
+      invalidateDashboardQueries(queryClient);
+      invalidateFinanceQueries(queryClient);
+    },
+  });
+}
+
 export function usePaymentsByCustomer(customerId: string) {
   return useQuery({
     queryKey: ['payments', 'customer', customerId],

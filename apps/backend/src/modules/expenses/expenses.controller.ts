@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -13,6 +14,7 @@ import { ExpensesService } from './expenses.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { QueryExpenseDto } from './dto/query-expense.dto';
+import { CancelDto } from '../../common/dto/cancel.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -54,6 +56,16 @@ export class ExpensesController {
   @Permissions('finance:update')
   async update(@Param('id') id: string, @Body() dto: UpdateExpenseDto) {
     return this.expensesService.update(id, dto);
+  }
+
+  @Patch(':id/cancel')
+  @Permissions('finance:update')
+  async cancel(
+    @Param('id') id: string,
+    @Body() dto: CancelDto,
+    @CurrentUser('_id') userId: string,
+  ) {
+    return this.expensesService.cancel(id, dto, userId);
   }
 
   @Delete(':id')

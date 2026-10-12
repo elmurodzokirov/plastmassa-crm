@@ -10,6 +10,7 @@ import { Model } from 'mongoose';
 import { Payment, PaymentDocument } from './schemas/payment.schema';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { QueryPaymentDto } from './dto/query-payment.dto';
+import { CancelDto } from '../../common/dto/cancel.dto';
 import { CustomersService } from '../customers/customers.service';
 import { OrdersService } from '../orders/orders.service';
 
@@ -30,8 +31,10 @@ export class PaymentsService {
     const { customer, order, amount, type, notes } = createPaymentDto;
 
     const customerDoc = await this.customersService.findById(customer);
-    let maxPayableAmount = Math.max(customerDoc.currentDebt, 0);
 
+    // Without an order, a payment may exceed (or exist without) debt: the
+    // surplus becomes customer credit (negative currentDebt — "haqdor").
+    // With an order, it still can't exceed that order's remaining balance.
     if (order) {
       const orderDoc = await this.ordersService.findById(order);
       const orderCustomerId =
@@ -63,18 +66,14 @@ export class PaymentsService {
         );
       }
 
-      maxPayableAmount = Math.min(maxPayableAmount, remainingAmount);
+      if (amount > remainingAmount) {
+        throw new BadRequestException(
+          'To\'lov summasi buyurtma qoldig\'idan oshib ketmoqda',
+        );
+      }
     }
 
-    if (maxPayableAmount <= 0) {
-      throw new BadRequestException('Mijozda yopiladigan qarzdorlik mavjud emas');
-    }
-
-    if (amount > maxPayableAmount) {
-      throw new BadRequestException(
-        'To\'lov summasi mavjud qarzdorlikdan oshib ketmoqda',
-      );
-    }
+    void customerDoc;
 
     const payment = new this.paymentModel({
       customer,
@@ -99,6 +98,41 @@ export class PaymentsService {
     }
 
     return savedPayment;
+  }
+
+  async cancel(
+    id: string,
+    dto: CancelDto,
+    userId: string,
+  ): Promise<PaymentDocument> {
+    const payment = await this.paymentModel.findById(id).exec();
+
+    if (!payment) {
+      throw new NotFoundException(`Payment with ID "${id}" not found`);
+    }
+
+    if (payment.status === 'CANCELLED') {
+      throw new BadRequestException('To\'lov allaqachon bekor qilingan');
+    }
+
+    // Reverse the effects of the original payment.
+    await this.customersService.updateDebt(
+      payment.customer.toString(),
+      payment.amount,
+    );
+
+    if (payment.order) {
+      await this.paymentModel.db
+        .model('Order')
+        .findByIdAndUpdate(payment.order, { $inc: { paidAmount: -payment.amount } })
+        .exec();
+    }
+
+    payment.status = 'CANCELLED';
+    payment.cancelledAt = new Date();
+    payment.cancelledBy = userId as any;
+    payment.cancelReason = dto.reason;
+    return payment.save();
   }
 
   async findAll(query: QueryPaymentDto) {

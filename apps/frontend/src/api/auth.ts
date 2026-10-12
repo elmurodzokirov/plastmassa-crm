@@ -6,6 +6,7 @@ import type {
   VerifyOtpDto,
   SetupStatusResponse,
   SetupSuperAdminDto,
+  ChangePasswordDto,
 } from '@plastmassa/shared';
 
 export const authApi = {
@@ -16,4 +17,6 @@ export const authApi = {
   me: () => client.get('/auth/me').then((r) => r.data),
   setupStatus: () => client.get<SetupStatusResponse>('/auth/setup-status').then((r) => r.data),
   setup: (data: SetupSuperAdminDto) => client.post<AuthResponse>('/auth/setup', data).then((r) => r.data),
+  changePassword: (data: ChangePasswordDto) =>
+    client.post<{ message: string }>('/auth/change-password', data).then((r) => r.data),
 };

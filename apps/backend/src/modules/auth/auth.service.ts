@@ -16,6 +16,7 @@ import { LoginDto } from './dto/login.dto';
 import { SendOtpDto } from './dto/send-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { SetupSuperAdminDto } from './dto/setup-super-admin.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { UserDocument } from '../users/schemas/user.schema';
 import { Otp, OtpDocument } from './schemas/otp.schema';
 import { TelegramService } from '../telegram/telegram.service';
@@ -191,6 +192,33 @@ export class AuthService {
     };
   }
 
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.usersService.findById(userId);
+
+    // Foydalanuvchida parol allaqachon mavjud bo'lsa — joriy parolni
+    // tekshiramiz. Faqat Telegram OTP orqali kirgan va hali parol
+    // o'rnatmagan foydalanuvchi uchun bu birinchi marta parol
+    // o'rnatish bo'ladi, shuning uchun joriy parol talab qilinmaydi.
+    if (user.password) {
+      const isCurrentPasswordValid = await bcrypt.compare(
+        dto.currentPassword || '',
+        user.password,
+      );
+
+      if (!isCurrentPasswordValid) {
+        throw new UnauthorizedException("Joriy parol noto'g'ri");
+      }
+    }
+
+    // Parolni qo'lda hash qilmaymiz — User sxemasidagi pre('save') hooki
+    // `.save()` chaqirilganda avtomatik hash qiladi. Qo'lda hash qilib,
+    // so'ng .save() chaqirish parolni ikki marta hash qilib qo'yardi.
+    user.password = dto.newPassword;
+    await user.save();
+
+    return { message: "Parol muvaffaqiyatli o'zgartirildi" };
+  }
+
   async refreshToken(refreshToken: string) {
     try {
       const payload = this.jwtService.verify(refreshToken, {
@@ -274,6 +302,7 @@ export class AuthService {
       role: userObj.role,
       salaryType: userObj.salaryType,
       isActive: userObj.isActive,
+      hasPassword: !!user.password,
       createdAt: userObj.createdAt,
       updatedAt: userObj.updatedAt,
     };

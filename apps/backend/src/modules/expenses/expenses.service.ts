@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -8,6 +9,7 @@ import { Expense, ExpenseDocument } from './schemas/expense.schema';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { QueryExpenseDto } from './dto/query-expense.dto';
+import { CancelDto } from '../../common/dto/cancel.dto';
 
 @Injectable()
 export class ExpensesService {
@@ -131,6 +133,28 @@ export class ExpensesService {
     return expense;
   }
 
+  async cancel(
+    id: string,
+    dto: CancelDto,
+    userId: string,
+  ): Promise<ExpenseDocument> {
+    const expense = await this.expenseModel.findById(id).exec();
+
+    if (!expense) {
+      throw new NotFoundException(`Expense with ID "${id}" not found`);
+    }
+
+    if (expense.status === 'CANCELLED') {
+      throw new BadRequestException('Xarajat allaqachon bekor qilingan');
+    }
+
+    expense.status = 'CANCELLED';
+    expense.cancelledAt = new Date();
+    expense.cancelledBy = new Types.ObjectId(userId);
+    expense.cancelReason = dto.reason;
+    return expense.save();
+  }
+
   async remove(id: string): Promise<ExpenseDocument> {
     const expense = await this.expenseModel.findByIdAndDelete(id).exec();
 
@@ -142,7 +166,7 @@ export class ExpensesService {
   }
 
   async getStats(dateFrom?: string, dateTo?: string) {
-    const matchStage: any = {};
+    const matchStage: any = { status: { $ne: 'CANCELLED' } };
 
     if (dateFrom || dateTo) {
       matchStage.date = {};

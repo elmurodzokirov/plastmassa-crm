@@ -19,6 +19,7 @@ import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { QuerySupplierDto } from './dto/query-supplier.dto';
 import { CreateSupplierPaymentDto } from './dto/create-supplier-payment.dto';
 import { QuerySupplierPaymentDto } from './dto/query-supplier-payment.dto';
+import { CancelDto } from '../../common/dto/cancel.dto';
 import { SetSupplierBalanceDto } from './dto/set-balance.dto';
 
 @Controller('suppliers')
@@ -57,6 +58,16 @@ export class SuppliersController {
     @CurrentUser('_id') userId: string,
   ) {
     return this.suppliersService.createPayment(dto, userId);
+  }
+
+  @Patch('payments/:id/cancel')
+  @Permissions('finance:update')
+  cancelPayment(
+    @Param('id') id: string,
+    @Body() dto: CancelDto,
+    @CurrentUser('_id') userId: string,
+  ) {
+    return this.suppliersService.cancelPayment(id, dto, userId);
   }
 
   @Get(':id')

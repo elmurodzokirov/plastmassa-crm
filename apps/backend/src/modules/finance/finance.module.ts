@@ -12,6 +12,10 @@ import {
   SupplierPaymentSchema,
 } from '../suppliers/schemas/supplier-payment.schema';
 import { Return, ReturnSchema } from '../returns/schemas/return.schema';
+import {
+  CashOperation,
+  CashOperationSchema,
+} from './schemas/cash-operation.schema';
 
 @Module({
   imports: [
@@ -23,6 +27,7 @@ import { Return, ReturnSchema } from '../returns/schemas/return.schema';
       { name: Supplier.name, schema: SupplierSchema },
       { name: SupplierPayment.name, schema: SupplierPaymentSchema },
       { name: Return.name, schema: ReturnSchema },
+      { name: CashOperation.name, schema: CashOperationSchema },
     ]),
   ],
   controllers: [FinanceController],

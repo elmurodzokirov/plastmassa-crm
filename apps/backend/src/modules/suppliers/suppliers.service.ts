@@ -15,6 +15,7 @@ import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { QuerySupplierDto } from './dto/query-supplier.dto';
 import { CreateSupplierPaymentDto } from './dto/create-supplier-payment.dto';
 import { QuerySupplierPaymentDto } from './dto/query-supplier-payment.dto';
+import { CancelDto } from '../../common/dto/cancel.dto';
 
 @Injectable()
 export class SuppliersService {
@@ -161,6 +162,31 @@ export class SuppliersService {
     await this.updateDebt(dto.supplier, -dto.amount);
 
     return savedPayment;
+  }
+
+  async cancelPayment(
+    id: string,
+    dto: CancelDto,
+    userId: string,
+  ): Promise<SupplierPaymentDocument> {
+    const payment = await this.supplierPaymentModel.findById(id).exec();
+
+    if (!payment) {
+      throw new NotFoundException(`Supplier payment with ID "${id}" not found`);
+    }
+
+    if (payment.status === 'CANCELLED') {
+      throw new BadRequestException("To'lov allaqachon bekor qilingan");
+    }
+
+    // Restore the supplier's debt that this payment had reduced.
+    await this.updateDebt(payment.supplier.toString(), payment.amount);
+
+    payment.status = 'CANCELLED';
+    payment.cancelledAt = new Date();
+    payment.cancelledBy = userId as any;
+    payment.cancelReason = dto.reason;
+    return payment.save();
   }
 
   async findPayments(query: QuerySupplierPaymentDto) {

@@ -1,7 +1,14 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { authApi } from '@/api/auth';
 import { useAuthStore } from '@/stores/auth.store';
-import type { LoginDto, SendOtpDto, VerifyOtpDto, SetupSuperAdminDto } from '@plastmassa/shared';
+import { toast } from '@/components/ui/use-toast';
+import type {
+  LoginDto,
+  SendOtpDto,
+  VerifyOtpDto,
+  SetupSuperAdminDto,
+  ChangePasswordDto,
+} from '@plastmassa/shared';
 
 export function useLogin() {
   const login = useAuthStore((s) => s.login);
@@ -47,6 +54,26 @@ export function useSetupSuperAdmin() {
     mutationFn: (data: SetupSuperAdminDto) => authApi.setup(data),
     onSuccess: (data) => {
       login(data.accessToken, data.refreshToken, data.user);
+    },
+  });
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (data: ChangePasswordDto) => authApi.changePassword(data),
+    onSuccess: () => {
+      toast({
+        title: 'Muvaffaqiyatli',
+        description: "Parol muvaffaqiyatli o'zgartirildi",
+        variant: 'success',
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Xatolik',
+        description: err?.response?.data?.message || 'Parolni o\'zgartirishda xatolik yuz berdi',
+        variant: 'destructive',
+      });
     },
   });
 }

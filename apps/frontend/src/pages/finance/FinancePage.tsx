@@ -15,19 +15,22 @@ import {
   BarChart3,
   Wallet,
   Truck,
-  ArrowUpCircle,
-  ArrowDownCircle,
+  Download,
+  Banknote,
+  Landmark,
+  CreditCard,
 } from 'lucide-react';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, exportToCsv } from '@/lib/utils';
 import {
   useCashFlow,
-  useTodayTransactions,
+  useTransactions,
   useDebtors,
   useCreditors,
   useFinanceSummary,
 } from '@/hooks/use-finance';
 import type { FinanceTransaction } from '@/api/finance';
 import { toast } from '@/components/ui/use-toast';
+import { TransactionsLedgerTable } from '@/components/finance/transactions-ledger-table';
 import { TransactionViewDialog } from '@/components/finance/transaction-view-dialog';
 
 import { Button } from '@/components/ui/button';
@@ -75,6 +78,20 @@ function getMonthRange() {
   };
 }
 
+type Preset = 'today' | 'week' | 'month';
+
+function getPresetRange(preset: Preset) {
+  const now = new Date();
+  const fmt = (d: Date) => format(d, 'yyyy-MM-dd');
+  if (preset === 'today') return { dateFrom: fmt(now), dateTo: fmt(now) };
+  if (preset === 'week') {
+    const day = (now.getDay() + 6) % 7; // Monday = 0
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day);
+    return { dateFrom: fmt(monday), dateTo: fmt(now) };
+  }
+  return getMonthRange();
+}
+
 // ── Component ─────────────────────────────────────────────────────────
 
 export default function FinancePage() {
@@ -96,7 +113,7 @@ export default function FinancePage() {
     [cfDateFrom, cfDateTo],
   );
   const { data: cashFlowData, isLoading: cashFlowLoading } = useCashFlow(cashFlowParams);
-  const { data: todayTransactionsData, isLoading: todayTransactionsLoading } = useTodayTransactions();
+  const { data: ledgerData, isLoading: ledgerLoading } = useTransactions(cashFlowParams);
   const { data: financeSummaryData, isLoading: financeSummaryLoading } = useFinanceSummary();
 
   const { data: debtorsData, isLoading: debtorsLoading } = useDebtors();
@@ -108,7 +125,31 @@ export default function FinancePage() {
   const totalDebt = debtors.reduce((sum, d) => sum + (d.totalDebt || 0), 0);
   const creditors = Array.isArray(creditorsData) ? creditorsData : [];
   const totalCredit = creditors.reduce((sum, c) => sum + (c.totalDebt || 0), 0);
-  const todayTransactions = todayTransactionsData?.items || [];
+  // Ledger arrives oldest → newest; show newest first (running balance stays per row).
+  const ledgerItems = useMemo(() => [...(ledgerData?.items || [])].reverse(), [ledgerData]);
+  const accountBalances = financeSummaryData?.accountBalances;
+
+  const applyPreset = useCallback((p: Preset) => {
+    const r = getPresetRange(p);
+    setCfDateFrom(r.dateFrom);
+    setCfDateTo(r.dateTo);
+  }, []);
+
+  const handleExport = useCallback(() => {
+    const rows = [...(ledgerData?.items || [])].map((tx: any) => [
+      format(new Date(tx.date), 'dd.MM.yyyy HH:mm'),
+      tx.title + (tx.subtitle ? ` — ${tx.subtitle}` : '') + (tx.cancelled ? ' (BEKOR QILINGAN)' : ''),
+      tx.account === 'BANK' ? 'Bank' : tx.account === 'CARD' ? 'Karta' : 'Naqd',
+      tx.direction === 'IN' ? tx.amount : '',
+      tx.direction === 'OUT' ? tx.amount : '',
+      tx.balance ?? '',
+    ]);
+    exportToCsv(
+      `kassa-kitobi-${cfDateFrom}_${cfDateTo}.csv`,
+      ['Sana', 'Tavsif', 'Hisob', 'Kirim', 'Chiqim', 'Qoldiq'],
+      rows,
+    );
+  }, [ledgerData, cfDateFrom, cfDateTo]);
 
   // ── Render ────────────────────────────────────────────────────────
 
@@ -146,6 +187,22 @@ export default function FinancePage() {
             transition={{ duration: 0.3, delay: 0.1 }}
             className="flex flex-col sm:flex-row items-start sm:items-end gap-3"
           >
+            <div className="flex gap-1.5">
+              {([['today', 'Bugun'], ['week', 'Hafta'], ['month', 'Oy']] as [Preset, string][]).map(
+                ([p, label]) => (
+                  <Button
+                    key={p}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 rounded-xl"
+                    onClick={() => applyPreset(p)}
+                  >
+                    {label}
+                  </Button>
+                ),
+              )}
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Boshlanish sana</Label>
               <Input
@@ -168,34 +225,69 @@ export default function FinancePage() {
 
           {/* Stat Cards */}
           {!cashFlowLoading && cashFlowData && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <StatCard
+                  title="Davr kirimi"
+                  value={formatCurrency(cashFlowData.totalIncome || 0)}
+                  icon={TrendingUp}
+                  iconColor="text-green-400"
+                  iconBg="bg-green-500/20"
+                  index={0}
+                />
+                <StatCard
+                  title="Davr chiqimi"
+                  value={formatCurrency(cashFlowData.totalExpense || 0)}
+                  icon={TrendingDown}
+                  iconColor="text-red-400"
+                  iconBg="bg-red-500/20"
+                  index={1}
+                />
+                <StatCard
+                  title="Hozirgi kassa (barcha vaqt)"
+                  value={
+                    financeSummaryLoading
+                      ? '...'
+                      : formatCurrency(financeSummaryData?.cashOnHand || 0)
+                  }
+                  icon={Wallet}
+                  iconColor="text-blue-400"
+                  iconBg="bg-blue-500/20"
+                  index={2}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Davr boshidagi qoldiq: {formatCurrency(cashFlowData.openingBalance || 0)} → davr
+                oxiridagi qoldiq: {formatCurrency(cashFlowData.closingBalance || 0)}
+              </p>
+            </>
+          )}
+
+          {accountBalances && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <StatCard
-                title="Kirim"
-                value={formatCurrency(cashFlowData.totalIncome || 0)}
-                icon={TrendingUp}
-                iconColor="text-green-400"
-                iconBg="bg-green-500/20"
-                index={0}
+                title="Naqd"
+                value={formatCurrency(accountBalances.CASH || 0)}
+                icon={Banknote}
+                iconColor="text-emerald-400"
+                iconBg="bg-emerald-500/20"
+                index={3}
               />
               <StatCard
-                title="Chiqim"
-                value={formatCurrency(cashFlowData.totalExpense || 0)}
-                icon={TrendingDown}
-                iconColor="text-red-400"
-                iconBg="bg-red-500/20"
-                index={1}
+                title="Bank (o'tkazma)"
+                value={formatCurrency(accountBalances.BANK || 0)}
+                icon={Landmark}
+                iconColor="text-sky-400"
+                iconBg="bg-sky-500/20"
+                index={4}
               />
               <StatCard
-                title="Kassadagi mablag'"
-                value={
-                  financeSummaryLoading
-                    ? '...'
-                    : formatCurrency(financeSummaryData?.cashOnHand || 0)
-                }
-                icon={Wallet}
-                iconColor="text-blue-400"
-                iconBg="bg-blue-500/20"
-                index={2}
+                title="Karta"
+                value={formatCurrency(accountBalances.CARD || 0)}
+                icon={CreditCard}
+                iconColor="text-violet-400"
+                iconBg="bg-violet-500/20"
+                index={5}
               />
             </div>
           )}
@@ -206,54 +298,32 @@ export default function FinancePage() {
             </div>
           )}
 
-          {/* Today's Transactions List */}
+          {/* Cash book for the selected period */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.2 }}
           >
-            <h2 className="text-lg font-semibold text-foreground mb-4">
-              Bugungi kirim va chiqimlar
-            </h2>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-foreground">Kassa kitobi</h2>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 rounded-xl"
+                onClick={handleExport}
+                disabled={ledgerItems.length === 0}
+              >
+                <Download className="h-4 w-4" />
+                Excel (CSV)
+              </Button>
+            </div>
             <DataTableWrapper
-              isLoading={todayTransactionsLoading}
-              isEmpty={todayTransactions.length === 0}
+              isLoading={ledgerLoading}
+              isEmpty={ledgerItems.length === 0}
               emptyTitle="Ma'lumot topilmadi"
-              emptyDescription="Bugun uchun hech qanday kirim yoki chiqim qayd etilmagan"
+              emptyDescription="Tanlangan davrda hech qanday kirim yoki chiqim qayd etilmagan"
             >
-              <div className="divide-y divide-border/30 rounded-xl border border-border/50 overflow-hidden">
-                {todayTransactions.map((tx) => (
-                  <button
-                    key={tx._id}
-                    type="button"
-                    onClick={() => setViewTransaction(tx)}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-accent/50 transition-colors"
-                  >
-                    {tx.direction === 'IN' ? (
-                      <ArrowUpCircle className="h-5 w-5 text-green-400 shrink-0" />
-                    ) : (
-                      <ArrowDownCircle className="h-5 w-5 text-red-400 shrink-0" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-foreground truncate">{tx.title}</p>
-                      {tx.subtitle && (
-                        <p className="text-xs text-muted-foreground truncate">{tx.subtitle}</p>
-                      )}
-                    </div>
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      {format(new Date(tx.date), 'HH:mm')}
-                    </span>
-                    <span
-                      className={cn(
-                        'text-sm font-semibold shrink-0 w-32 text-right',
-                        tx.direction === 'IN' ? 'text-green-400' : 'text-red-400',
-                      )}
-                    >
-                      {tx.direction === 'IN' ? '+' : '-'}{formatCurrency(tx.amount)}
-                    </span>
-                  </button>
-                ))}
-              </div>
+              <TransactionsLedgerTable items={ledgerItems} onRowClick={setViewTransaction} />
             </DataTableWrapper>
           </motion.div>
         </TabsContent>

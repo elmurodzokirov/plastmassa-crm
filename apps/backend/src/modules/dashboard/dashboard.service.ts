@@ -76,7 +76,12 @@ export class DashboardService {
       this.getPaymentIncomeTotal(startOfMonth, endOfMonth),
       this.expenseModel
         .aggregate([
-          { $match: { date: { $gte: startOfMonth, $lte: endOfMonth } } },
+          {
+            $match: {
+              date: { $gte: startOfMonth, $lte: endOfMonth },
+              status: { $ne: 'CANCELLED' },
+            },
+          },
           { $group: { _id: null, total: { $sum: '$amount' } } },
         ])
         .exec(),
@@ -128,7 +133,7 @@ export class DashboardService {
     // birlashtirib, sana bo'yicha saralab, oxirgi `limit` tasini qaytaramiz.
     const [standalonePayments, orderIncomes] = await Promise.all([
       this.paymentModel
-        .find()
+        .find({ status: { $ne: 'CANCELLED' } })
         .populate('customer', 'name')
         .sort({ createdAt: -1 })
         .limit(limit)
@@ -328,7 +333,12 @@ export class DashboardService {
   private async getPaymentIncomeTotal(from: Date, to: Date): Promise<number> {
     const result = await this.paymentModel
       .aggregate([
-        { $match: { createdAt: { $gte: from, $lte: to } } },
+        {
+          $match: {
+            createdAt: { $gte: from, $lte: to },
+            status: { $ne: 'CANCELLED' },
+          },
+        },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ])
       .exec();

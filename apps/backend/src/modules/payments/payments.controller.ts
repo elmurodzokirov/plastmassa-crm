@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Param,
   Query,
@@ -10,6 +11,7 @@ import {
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { QueryPaymentDto } from './dto/query-payment.dto';
+import { CancelDto } from '../../common/dto/cancel.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -47,5 +49,15 @@ export class PaymentsController {
     @CurrentUser('_id') userId: string,
   ) {
     return this.paymentsService.create(createPaymentDto, userId);
+  }
+
+  @Patch(':id/cancel')
+  @Permissions('finance:update')
+  async cancel(
+    @Param('id') id: string,
+    @Body() dto: CancelDto,
+    @CurrentUser('_id') userId: string,
+  ) {
+    return this.paymentsService.cancel(id, dto, userId);
   }
 }
